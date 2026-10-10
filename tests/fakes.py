@@ -48,3 +48,34 @@ class FakeHttp:
 
     def sent(self, method):
         return [p for u, p in self.posts if u.endswith("/" + method)]
+
+
+class FakeApi:
+    """HttpClient falso com rotas: {"POST /media": resposta | [respostas] | Exception}.
+
+    A rota casa por método e sufixo do URL; uma lista é consumida por ordem (a última repete-se)."""
+
+    def __init__(self, routes):
+        self.routes = dict(routes)
+        self.calls: list[tuple[str, str, object, dict | None]] = []
+
+    def _answer(self, method, url, body, headers):
+        self.calls.append((method, url, body, headers))
+        for key, value in self.routes.items():
+            m, suffix = key.split(" ", 1)
+            if m == method and url.split("?")[0].endswith(suffix):
+                if isinstance(value, list):
+                    value = value.pop(0) if len(value) > 1 else value[0]
+                if isinstance(value, Exception):
+                    raise value
+                return value
+        raise AssertionError(f"rota inesperada: {method} {url}")
+
+    def get_json(self, url, params=None, headers=None):
+        return self._answer("GET", url, params, headers)
+
+    def post_json(self, url, payload, headers=None):
+        return self._answer("POST", url, payload, headers)
+
+    def put_bytes(self, url, data, headers):
+        return self._answer("PUT", url, data, headers)
