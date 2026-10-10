@@ -100,7 +100,8 @@ class FakeChannel:
     def notify(self, text):
         self.notes.append(text)
 
-    def poll(self):
+    def poll(self, now=None):
+        self.polled_at = now
         events, self.events = self.events, []
         return events
 

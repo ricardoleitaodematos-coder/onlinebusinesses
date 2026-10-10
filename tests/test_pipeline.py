@@ -166,6 +166,15 @@ def test_choice_makes_four_proposals_per_two_topics(env):
     assert {store.status(p.id) for p in channel.proposals_sent} == {"gated"}
 
 
+def test_late_choice_of_yesterdays_topics_generates_nothing(env):
+    pipe, store, channel, llm, _ = env(events=[choose("t1", "t2")])
+    tomorrow = NOW + timedelta(days=1)
+    pipe.stage_poll(tomorrow)
+    assert store.proposals_for("t1") == [] and llm.calls == [] and store.choice(DAY) == []
+    assert any("2026-10-10" in n and "espera" in n for n in channel.notes)
+    assert channel.polled_at == tomorrow
+
+
 def test_choice_with_wrong_count_is_ignored(env):
     pipe, store, channel, _, _ = env(events=[choose("t1")])
     pipe.stage_poll(NOW)

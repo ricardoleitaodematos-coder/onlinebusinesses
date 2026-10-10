@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from builders import make_proposal, make_source, make_topic
 from fakes import FakeHttp
@@ -115,3 +115,20 @@ def test_render_proposal_shows_script_and_claim_sources():
     p = make_proposal(topic=t, script="Piada sobre a medida.")
     text = render_proposal(p, t)
     assert "Piada sobre a medida." in text and "facto" in text and t.sources[0].url in text
+
+
+TOMORROW = datetime(2026, 10, 11, 8, 0, tzinfo=timezone.utc)
+
+
+def test_selection_taps_on_yesterdays_topics_are_refused(tmp_path):
+    store, _, http, ch = setup(tmp_path, [cb(1, "t:2026-10-10:2"), cb(2, "tc:2026-10-10")])
+    assert ch.poll(TOMORROW) == []
+    assert store.selection(DAY) == [] and http.sent("editMessageReplyMarkup") == []
+    assert any("2026-10-10" in m["text"] and "espera" in m["text"] for m in http.sent("sendMessage"))
+
+
+def test_selection_taps_on_todays_topics_work_with_now(tmp_path):
+    today = datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc)
+    store, topics, http, ch = setup(tmp_path, [cb(1, "t:2026-10-10:2"), cb(2, "t:2026-10-10:4"),
+                                               cb(3, "tc:2026-10-10")])
+    assert ch.poll(today) == [TopicsChosen(DAY, ("t2", "t4"))]

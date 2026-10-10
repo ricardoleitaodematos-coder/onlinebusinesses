@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from .brief import Channel, Feedback, ProposalDecision, TopicsChosen
+from .brief import Channel, Feedback, ProposalDecision, TopicsChosen, stale_choice_text
 from .config import Settings, load_feeds, today_lisbon
 from .gates import blocked_words, copyright_gate, run_gates
 from .llm import LLMClient
@@ -70,7 +70,7 @@ class Pipeline:
 
     # --- escolha, geração e decisões ---------------------------------------------------------------------------
     def stage_poll(self, now: datetime) -> None:
-        for event in self.channel.poll():
+        for event in self.channel.poll(now):
             if isinstance(event, TopicsChosen):
                 self._on_choice(event, now)
             elif isinstance(event, ProposalDecision):
@@ -79,6 +79,9 @@ class Pipeline:
                 self._on_feedback(event, now)
 
     def _on_choice(self, ev: TopicsChosen, now: datetime) -> None:
+        if ev.day != today_lisbon(now):  # escolha atrasada: os temas de ontem já não se geram
+            self.channel.notify(stale_choice_text(ev.day.isoformat()))
+            return
         if self.store.choice(ev.day):
             return
         known = {t.id for t in self.store.topics(ev.day)}

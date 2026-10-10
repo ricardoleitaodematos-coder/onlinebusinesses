@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Literal, Protocol, Sequence
 
+from .config import today_lisbon
 from .http import HttpClient
 from .models import Proposal, Topic
 from .store import Store
@@ -42,7 +43,11 @@ class Channel(Protocol):
 
     def notify(self, text: str) -> None: ...
 
-    def poll(self) -> list[Event]: ...
+    def poll(self, now: datetime | None = None) -> list[Event]: ...
+
+
+def stale_choice_text(day: str) -> str:
+    return f"Esses temas são de {day}; espera pelos de hoje."
 
 
 def render_topics(day: date, topics: Sequence[Topic]) -> str:
@@ -65,6 +70,7 @@ def render_proposal(p: Proposal, topic: Topic) -> str:
 class TelegramChannel:
     def __init__(self, http: HttpClient, token: str, chat_id: int, store: Store, picks: int = 2):
         self.http, self._token, self.chat_id, self.store, self.picks = http, token, chat_id, store, picks
+        self._today: date | None = None
 
     def _url(self, method: str) -> str:
         return f"https://api.telegram.org/bot{self._token}/{method}"
@@ -98,7 +104,9 @@ class TelegramChannel:
     def notify(self, text: str) -> None:
         self._send(text)
 
-    def poll(self) -> list[Event]:
+    def poll(self, now: datetime | None = None) -> list[Event]:
+        """`now` serve para recusar toques em temas de outro dia (sem `now` não se verifica)."""
+        self._today = today_lisbon(now) if now is not None else None
         result = self.http.get_json(self._url("getUpdates"), {"offset": self.store.get_offset(), "timeout": 0})
         events: list[Event] = []
         for update in sorted(result.get("result", []), key=lambda u: u["update_id"]):
@@ -123,10 +131,18 @@ class TelegramChannel:
                 return [Feedback(pending, message["text"])]
         return []
 
+    def _stale_day(self, day_text: str) -> bool:
+        if self._today is None or day_text == self._today.isoformat():
+            return False
+        self._send(stale_choice_text(day_text))
+        return True
+
     def _handle_callback(self, data: str, message_id: int) -> list[Event]:
         kind, *rest = data.split(":")
         if kind == "p" and len(rest) == 2 and rest[1] in _ACTIONS:
             return [ProposalDecision(rest[0], _ACTIONS[rest[1]])]  # type: ignore[arg-type]
+        if kind in ("t", "tc") and self._stale_day(rest[0]):
+            return []
         if kind == "t" and len(rest) == 2:
             day, n = date.fromisoformat(rest[0]), int(rest[1])
             chosen = [x for x in self.store.selection(day) if x != n]
