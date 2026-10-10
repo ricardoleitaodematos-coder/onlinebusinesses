@@ -28,3 +28,23 @@ class FakeSearch:
         if self.error:
             raise self.error
         return list(self.results)
+
+
+class FakeHttp:
+    """HttpClient falso: guarda os POST e devolve updates do Telegram pré-carregados."""
+
+    def __init__(self, updates=()):
+        self.updates = list(updates)
+        self.posts: list[tuple[str, dict]] = []
+        self.gets: list[tuple[str, dict | None]] = []
+
+    def get_json(self, url, params=None):
+        self.gets.append((url, params))
+        return {"ok": True, "result": list(self.updates)}
+
+    def post_json(self, url, payload):
+        self.posts.append((url, dict(payload)))
+        return {"ok": True, "result": {"message_id": len(self.posts)}}
+
+    def sent(self, method):
+        return [p for u, p in self.posts if u.endswith("/" + method)]

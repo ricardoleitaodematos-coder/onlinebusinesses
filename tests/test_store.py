@@ -74,3 +74,10 @@ def test_awaiting_feedback_set_and_clear(store):
     assert store.awaiting_feedback() == "ab12cd34"
     store.set_awaiting_feedback(None)
     assert store.awaiting_feedback() is None
+
+
+def test_selection_is_per_day_and_defaults_empty(store):
+    assert store.selection(DAY) == []
+    store.set_selection(DAY, [1, 3])
+    assert store.selection(DAY) == [1, 3]
+    assert store.selection(date(2026, 10, 11)) == []

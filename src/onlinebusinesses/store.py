@@ -131,3 +131,9 @@ class Store:
 
     def awaiting_feedback(self) -> str | None:
         return self._get_meta("awaiting_feedback")
+
+    def selection(self, day: date) -> list[int]:
+        return json.loads(self._get_meta(f"selection:{day.isoformat()}") or "[]")
+
+    def set_selection(self, day: date, numbers: Sequence[int]) -> None:
+        self._set_meta(f"selection:{day.isoformat()}", json.dumps(list(numbers)))
