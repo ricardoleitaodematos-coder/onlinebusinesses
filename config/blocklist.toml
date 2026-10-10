@@ -1,0 +1,8 @@
+# Palavras vetadas (correspondência por palavra inteira, sem distinguir maiúsculas nem acentos).
+# Temas sempre de fora: mortes e tragédias, vítimas, menores, atentados, suicídio.
+pt = ["morreu", "morreram", "morte", "mortes", "morto", "mortos", "falecimento", "faleceu", "tragedia",
+      "vitima", "vitimas", "menor", "menores", "crianca", "criancas", "atentado", "ataque", "suicidio", "luto"]
+es = ["murio", "murieron", "muerte", "muertes", "muerto", "muertos", "tragedia", "victima", "victimas",
+      "menor", "menores", "nino", "ninos", "atentado", "ataque", "suicidio", "luto"]
+en = ["died", "dead", "death", "deaths", "killed", "tragedy", "victim", "victims", "minor", "minors",
+      "child", "children", "attack", "suicide", "mourning"]
