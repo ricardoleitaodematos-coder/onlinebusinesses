@@ -1,6 +1,6 @@
 # Produtos digitais em redes sociais — desenho
 
-Data: 2026-10-10 · Estado: **por aprovar pelo Ricardo**
+Data: 2026-10-10 · Estado: **fase 0 aprovada pelo Ricardo; restante desenho (produtos e vendas) em pausa até a fase 0 funcionar**
 Regras basilares (fonte de verdade, no cofre): `segundo-cerebro/04 Projetos/Produtos Digitais (Online Businesses).md`.
 
 ## 1. Intenção
@@ -111,9 +111,38 @@ Por vídeo: retenção, partilhas, comentários com palavra-chave. Funil: coment
 ## 13. O que fica ao construtor
 Escolha final de ferramentas (agendador, base de dados, editor de vídeo, voz), estrutura do repositório, nomes de marca e produtos, calendário detalhado.
 
-## 14. Decisões em aberto
-1. Idiomas de arranque.
-2. Loja (Gumroad, Stripe, Lemon Squeezy).
-3. DMs: ManyChat ou bot próprio (depende da política da Meta).
-4. Voz: gravada pelo Ricardo ou sintética rotulada.
+## 14. Decisões
+**Tomadas (2026-10-10)**
+1. Idiomas: original PT-PT; PT-BR e ES por dobragem e legendas, adaptados ao local.
+2. Voz sintética (referência: a do Ricardo, com o consentimento dele) **com o rótulo de IA da plataforma**. Sem avatar com a imagem dele por defeito; avatar só na fase 2 e rotulado.
+3. Loja: Gumroad no arranque (decisão do agente; Pix e fiscalidade em Portugal por confirmar). Só relevante depois da fase 0.
+
+**Em aberto**
+4. DMs: ManyChat ou bot próprio (depende da política da Meta).
 5. Nome da marca e dos canais.
+6. Onde corre o sistema continuamente (servidor pequeno ou serverless).
+
+## 15. Fase 0 — conta de teste da gestão automática (sem vendas)
+**Objetivo:** provar que o pipeline de gestão corre sozinho. **Sem** produtos, loja, afiliados, funil de venda ou email. O público de comédia não é o comprador de produtividade: o teste valida o pipeline, não a procura do nicho de produtos.
+
+**Conta de teste:** comédia e memes sobre a atualidade, com sátira e preocupação; tom jovem e atual. Temas: IA, geopolítica, assuntos nacionais importantes e caricatos. PT-PT no original; PT-BR e ES só nos temas que viajam (assuntos nacionais ficam em PT).
+
+**Processo criativo diário (definido pelo Ricardo)**
+1. O agente pesquisa todos os dias (fontes fiáveis, com pelo menos duas fontes independentes por tema).
+2. Propõe **5 temas**.
+3. O Ricardo escolhe **2** (para já).
+4. O agente cria **2 propostas por cada tema escolhido** (4 no total).
+5. O agente publica. **Por defeito (decisão do agente): as duas propostas de cada tema**, para comparar versões. O Ricardo pode alterar.
+
+**Barreiras automáticas antes de publicar**
+- **Factos:** cada afirmação factual aponta para fonte; a piada exagera, o ponto de partida é verdadeiro. Sem fonte, não sai.
+- **Sensibilidade:** ficam sempre de fora mortes e tragédias recentes, menores, pessoas privadas, tragédias de guerra tratadas como piada e deepfakes realistas de políticos ou figuras públicas. Caricatura animada e claramente satírica é permitida; difamação e honra são riscos legais a confirmar para Portugal.
+- **Direitos de autor:** só visuais gerados por nós e música livre; nada de imagens, vídeo ou música de terceiros.
+- **Rótulos:** etiqueta de IA da plataforma em voz ou imagem sintéticas realistas.
+- **Primeira semana:** o Ricardo vê as 4 propostas antes de publicarem; depois reduz-se.
+
+**Critério de sucesso:** uma semana de publicação diária sem intervenção além da escolha dos 2 temas, com métricas dos próprios canais (sem metas de blogs de ferramentas).
+
+**Construir ou alugar (palpite):** construir o que dá controlo (pesquisa, barreiras, calendário); alugar voz, vídeo e publicação. Ferramentas como a FacelessReels podem servir de atalho no teste, mas não controlam factos nem sensibilidade.
+
+**Pendente de confirmação nos textos oficiais:** regras da Meta e do TikTok sobre conteúdo político gerado por IA; política da Meta sobre respostas automáticas (só relevante quando houver DMs); auditoria da app TikTok (publicação em privado até aprovar; via de reserva por rascunhos).
