@@ -60,9 +60,16 @@ def render_topics(day: date, topics: Sequence[Topic]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def render_proposal(p: Proposal, topic: Topic) -> str:
+_ES_PREVIEW_CHARS = 400
+
+
+def render_proposal(p: Proposal, topic: Topic, es: str | None = None) -> str:
+    """`es` é o texto em espanhol (se existir): mostram-se as primeiras letras para o Ricardo o ver antes de aceitar."""
     urls = {s.id: s.url for s in topic.sources}
-    lines = [f"Proposta {p.variant} — {topic.title}", "", p.script_pt, "", "Afirmações e fontes:"]
+    lines = [f"Proposta {p.variant} — {topic.title}", "", p.script_pt, ""]
+    if es:
+        lines += ["Versão ES:", es[:_ES_PREVIEW_CHARS] + ("…" if len(es) > _ES_PREVIEW_CHARS else ""), ""]
+    lines.append("Afirmações e fontes:")
     for c in p.claims:
         lines.append(f"- {c.text} ({', '.join(urls.get(i, '?') for i in c.source_ids)})")
     return "\n".join(lines)
@@ -100,7 +107,7 @@ class TelegramChannel:
             suffix = ""
         row = [{"text": label, "callback_data": f"p:{p.id}:{code}{suffix}"}
                for label, code in (("Aceitar", "a"), ("Recusar", "r"), ("Melhorar", "i"))]
-        self._send(render_proposal(p, topic), [row])
+        self._send(render_proposal(p, topic, self.store.translation(p.id, "es")), [row])
 
     def ask_feedback(self, proposal_id: str) -> None:
         self.store.set_awaiting_feedback(proposal_id)

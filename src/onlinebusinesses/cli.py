@@ -21,7 +21,8 @@ from .store import Store
 from .unconfigured import NullSearch, UnconfiguredVisuals, UnconfiguredVoice
 
 COMMANDS = ("research", "poll", "publish", "report")
-SECRET_VARS = ("TELEGRAM_BOT_TOKEN", "ANTHROPIC_API_KEY", "TIKTOK_ACCESS_TOKEN", "INSTAGRAM_ACCESS_TOKEN")
+SECRET_VARS = ("TELEGRAM_BOT_TOKEN", "ANTHROPIC_API_KEY", "TIKTOK_ACCESS_TOKEN", "TIKTOK_ACCESS_TOKEN_ES",
+               "INSTAGRAM_ACCESS_TOKEN")
 
 
 class ConfigError(Exception):
@@ -49,6 +50,8 @@ def build_pipeline(env: Mapping[str, str]) -> Pipeline:
     publishers = {}
     if env.get("TIKTOK_ACCESS_TOKEN"):
         publishers["tiktok"] = TikTokDraftPublisher(http, env["TIKTOK_ACCESS_TOKEN"])
+    if env.get("TIKTOK_ACCESS_TOKEN_ES"):  # conta TikTok em espanhol: publica a versão ES
+        publishers["tiktok:es"] = TikTokDraftPublisher(http, env["TIKTOK_ACCESS_TOKEN_ES"])
     # Instagram: precisa de um VideoHost real (URL público); por configurar, por isso não se regista aqui.
     return Pipeline(store, TelegramChannel(http, token, settings.telegram_chat_id, store, settings.picks_per_day),
                     llm, NullSearch(), UnconfiguredVoice(), UnconfiguredVisuals(), publishers, settings, _get_text,

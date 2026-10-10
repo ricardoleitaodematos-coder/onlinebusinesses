@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 from builders import NOW, make_proposal, make_source, make_topic, rss
-from fakes import FakeChannel, FakeLLM, FakePublisher, FakeSearch, fake_builder
+from fakes import FakeChannel, FakeLLMWithEs, FakePublisher, FakeSearch, fake_builder
 from onlinebusinesses.brief import Feedback, ProposalDecision, TopicsChosen
 from onlinebusinesses.config import load_settings
 from onlinebusinesses.pipeline import Pipeline, caption_for
@@ -39,7 +39,7 @@ def env(tmp_path):
         if seed_topics:
             store.save_topics(DAY, [make_topic("t1", SRC), make_topic("t2", SRC), make_topic("t3", SRC)])
         channel = FakeChannel(events)
-        llm = FakeLLM(list(llm_responses) or [proposals_json()])
+        llm = FakeLLMWithEs(list(llm_responses) or [proposals_json()])
         pubs = {"instagram": FakePublisher()} if publishers is None else publishers
         pipe = Pipeline(store, channel, llm, FakeSearch(), None, None, pubs, settings, lambda url: "",
                         BLOCK, {"a.pt": 1, "b.com": 2}, tmp_path / "work", builder=fake_builder)
@@ -88,6 +88,8 @@ class RoutingLLM:
         self.calls.append((system, user))
         if system.startswith("Classifica"):
             return '{"category": "ai", "travels": true}'
+        if system.startswith("Adapta"):
+            return "Versión ES."
         return proposals_json(cite=re.search(r"id=(\w+)", user).group(1))
 
 
@@ -143,7 +145,8 @@ def test_caption_with_blocked_word_rejects_proposal(env, monkeypatch):
     import onlinebusinesses.pipeline as pipeline_module
 
     pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
-    monkeypatch.setattr(pipeline_module, "caption_for", lambda p, t: "Ele morreu.\n\nConteúdo satírico gerado com IA.")
+    monkeypatch.setattr(pipeline_module, "caption_for",
+                        lambda p, t, *a, **k: "Ele morreu.\n\nConteúdo satírico gerado com IA.")
     pipe.stage_poll(NOW)
     assert channel.proposals_sent == []
     assert all(store.status(p.id) == "rejected" for p in store.proposals_for("t1"))
@@ -217,8 +220,8 @@ def test_third_party_asset_rejects_after_production(env, monkeypatch):
     pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
     from onlinebusinesses.models import Asset
 
-    def builder(p, lang, voice, visuals, llm, workdir):
-        path, _ = fake_builder(p, lang, voice, visuals, llm, workdir)
+    def builder(p, lang, voice, visuals, llm, workdir, script=None):
+        path, _ = fake_builder(p, lang, voice, visuals, llm, workdir, script)
         return path, [Asset("musica.mp3", "third-party", None)]
 
     pipe.builder = builder
@@ -550,14 +553,14 @@ def test_revision_stays_revising_until_the_new_video_is_built(env):
     pipe.stage_poll(NOW)
     seen = []
 
-    def builder(prop, lang, voice, visuals, llm, workdir):
+    def builder(prop, lang, voice, visuals, llm, workdir, script=None):
         seen.append(store.status(prop.id))
-        return fake_builder(prop, lang, voice, visuals, llm, workdir)
+        return fake_builder(prop, lang, voice, visuals, llm, workdir, script)
 
     pipe.builder = builder
     channel.events = [Feedback(p.id, "mais curto")]
     pipe.stage_poll(NOW)
-    assert seen == ["revising"] and store.status(p.id) == "gated"
+    assert seen == ["revising", "revising"] and store.status(p.id) == "gated"  # um vídeo por língua
 
 
 def test_publisher_failing_ten_runs_in_a_row_warns_once(env):
@@ -623,3 +626,184 @@ def test_decisions_and_publication_day_are_recorded_for_metrics(env):
     pipe.stage_publish(NOW)
     assert store.decisions_between(DAY, DAY) == 1
     assert [(pid, plat, day) for pid, plat, _, day in store.publications_between(DAY, DAY)] == [(p.id, "instagram", DAY)]
+
+
+# --- espanhol (ES) na fase 0 ---------------------------------------------------------------------------------------
+
+def recording_builder(built):
+    def builder(p, lang, voice, visuals, llm, workdir, script=None):
+        built.append((p.id, lang, script))
+        return fake_builder(p, lang, voice, visuals, llm, workdir, script)
+    return builder
+
+
+def national_topics(store):
+    store.save_topics(DAY, [make_topic("n1", SRC, category="national", travels=False),
+                            make_topic("n2", SRC, category="national", travels=False)])
+
+
+def test_topic_that_travels_is_produced_in_pt_and_es(env):
+    pipe, store, channel, llm, _ = env(events=[choose("t1", "t2")])
+    built = []
+    pipe.builder = recording_builder(built)
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    assert {lang for pid, lang, _ in built if pid == p.id} == {"pt-PT", "es"}
+    assert (pipe.workdir / f"{p.id}-pt-PT.mp4").exists() and (pipe.workdir / f"{p.id}-es.mp4").exists()
+    assert store.translation(p.id, "es") == f"Versión ES: {p.script_pt}"
+    assert ("es", p.script_pt) in llm.localized
+    es_script = {lang: script for pid, lang, script in built if pid == p.id}["es"]
+    assert es_script == store.translation(p.id, "es")  # o vídeo usa o texto que passou nas barreiras
+    assert {store.status(x.id) for x in channel.proposals_sent} == {"gated"}
+
+
+def test_national_topic_is_produced_in_pt_only(env):
+    pipe, store, channel, llm, _ = env(events=[choose("n1", "n2")], seed_topics=False)
+    national_topics(store)
+    built = []
+    pipe.builder = recording_builder(built)
+    pipe.stage_poll(NOW)
+    assert len(channel.proposals_sent) == 4
+    assert {lang for _, lang, _ in built} == {"pt-PT"} and llm.localized == []
+    assert store.translation(store.proposals_for("n1")[0].id, "es") is None
+
+
+def test_publish_languages_setting_limits_what_is_produced(env):
+    from dataclasses import replace
+
+    pipe, store, channel, llm, _ = env(events=[choose("t1", "t2")])
+    pipe.settings = replace(pipe.settings, publish_languages=("pt-PT",))
+    built = []
+    pipe.builder = recording_builder(built)
+    pipe.stage_poll(NOW)
+    assert {lang for _, lang, _ in built} == {"pt-PT"} and llm.localized == []
+
+
+def test_blocked_word_in_the_es_text_rejects_the_proposal_with_the_reason(env):
+    pipe, store, channel, llm, _ = env(events=[choose("t1", "t2")])
+    pipe.blocklist = {"pt": ["morreu"], "es": ["muertos"]}
+    llm.es = lambda script: "Hubo muertos en el chiste."
+    built = []
+    pipe.builder = recording_builder(built)
+    pipe.stage_poll(NOW)
+    assert channel.proposals_sent == [] and built == []  # nem se gasta voz
+    p = first_proposal(store)
+    assert store.status(p.id) == "rejected" and "muertos" in " ".join(store.reasons(p.id))
+    assert any("muertos" in n for n in channel.notes)
+
+
+def test_blocked_word_in_the_es_caption_rejects_the_proposal(env, monkeypatch):
+    import onlinebusinesses.pipeline as pipeline_module
+
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+    pipe.blocklist = {"es": ["muertos"]}
+    real = pipeline_module.caption_for
+    monkeypatch.setattr(pipeline_module, "caption_for",
+                        lambda p, t, lang="pt-PT", text=None: "Hay muertos." if lang == "es" else real(p, t, lang, text))
+    pipe.stage_poll(NOW)
+    assert channel.proposals_sent == [] and "muertos" in " ".join(store.reasons(first_proposal(store).id))
+
+
+def test_failed_translation_rejects_the_proposal(env):
+    pipe, store, channel, llm, _ = env(events=[choose("t1", "t2")])
+    llm.es = lambda script: "   "
+    pipe.stage_poll(NOW)
+    assert channel.proposals_sent == []
+    assert "es" in " ".join(store.reasons(first_proposal(store).id))
+
+
+def test_revision_redoes_the_es_translation_from_the_new_script(env):
+    pipe, store, channel, llm, _ = env([proposals_json(), revision_json()], events=[choose("t1", "t2")])
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    assert store.translation(p.id, "es") == "Versión ES: Piada A"
+    channel.events = [ProposalDecision(p.id, "improve")]
+    pipe.stage_poll(NOW)
+    channel.events = [Feedback(p.id, "mais curto")]
+    pipe.stage_poll(NOW)
+    assert store.translation(p.id, "es") == "Versión ES: Piada revista" and store.status(p.id) == "gated"
+
+
+def test_resent_proposal_keeps_its_translation(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+
+    def down(p, topic):
+        raise RuntimeError("Telegram em baixo")
+
+    send = channel.send_proposal
+    channel.send_proposal = down
+    pipe.stage_poll(NOW)
+    channel.send_proposal = send
+    pipe.stage_poll(NOW)
+    assert store.translation(first_proposal(store).id, "es")
+
+
+def two_publishers():
+    return {"instagram": FakePublisher(), "instagram:es": FakePublisher()}
+
+
+def test_travelling_topic_publishes_each_language_with_its_video_and_caption(env):
+    pubs = two_publishers()
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers=pubs)
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    out = pipe.stage_publish(NOW)
+    assert out == {f"{p.id}:instagram": "ext-1", f"{p.id}:instagram:es": "ext-1"}
+    pt_video, pt_caption, _, pt_key = pubs["instagram"].calls[0]
+    es_video, es_caption, es_label, es_key = pubs["instagram:es"].calls[0]
+    assert pt_video.name == f"{p.id}-pt-PT.mp4" and es_video.name == f"{p.id}-es.mp4"
+    assert "Conteúdo satírico gerado com IA" in pt_caption and pt_caption.startswith("Piada A")
+    assert "Contenido satírico generado con IA" in es_caption and es_caption.startswith("Versión ES: Piada A")
+    assert "Conteúdo" not in es_caption and es_label is True and es_key == pt_key == p.id
+    assert store.status(p.id) == "published"
+    assert store.publication(p.id, "instagram:es") == "ext-1"
+
+
+def test_national_topic_ignores_the_es_publisher_and_is_still_published(env):
+    pubs = two_publishers()
+    pipe, store, channel, _, _ = env(events=[choose("n1", "n2")], publishers=pubs, seed_topics=False)
+    national_topics(store)
+    pipe.stage_poll(NOW)
+    p = store.proposals_for("n1")[0]
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    assert pipe.stage_publish(NOW) == {f"{p.id}:instagram": "ext-1"}
+    assert pubs["instagram:es"].calls == [] and store.status(p.id) == "published"
+    assert store.publication(p.id, "instagram:es") is None
+
+
+def test_published_waits_for_the_es_publisher_too(env):
+    pubs = {"instagram": FakePublisher(), "instagram:es": FakePublisher(fail_times=1)}
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers=pubs)
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    pipe.stage_publish(NOW)
+    assert store.status(p.id) == "approved" and store.publication(p.id, "instagram")
+    pipe.stage_publish(NOW)
+    assert store.status(p.id) == "published" and len(pubs["instagram"].calls) == 1
+
+
+def test_es_only_publisher_skips_national_topics_and_never_marks_them_published(env):
+    pubs = {"tiktok:es": FakePublisher()}
+    pipe, store, channel, _, _ = env(events=[choose("t1", "n2")], publishers=pubs, seed_topics=False)
+    store.save_topics(DAY, [make_topic("t1", SRC), make_topic("n2", SRC, category="national", travels=False)])
+    pipe.stage_poll(NOW)
+    travelling, national = store.proposals_for("t1")[0], store.proposals_for("n2")[0]
+    channel.events = [ProposalDecision(travelling.id, "accept"), ProposalDecision(national.id, "accept")]
+    pipe.stage_poll(NOW)
+    assert pipe.stage_publish(NOW) == {f"{travelling.id}:tiktok:es": "ext-1"}
+    assert store.status(travelling.id) == "published" and store.status(national.id) == "approved"
+    assert [c[3] for c in pubs["tiktok:es"].calls] == [travelling.id]
+
+
+def test_caption_in_each_language():
+    t = make_topic()
+    p = make_proposal(topic=t, script="O Governo descobriu a roda. Depois inventou o IVA.")
+    es = caption_for(p, t, "es", "El Gobierno descubrió la rueda. Luego inventó el IVA.")
+    assert es.startswith("El Gobierno descubrió la rueda.\n\nContenido satírico generado con IA. Fuentes: ")
+    assert "a.pt" in es and "inventó" not in es and "Governo" not in es
+    assert caption_for(p, t, "pt-PT") == caption_for(p, t)

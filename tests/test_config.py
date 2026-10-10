@@ -43,3 +43,12 @@ def test_aliases_from_the_real_sources_file():
     assert aliases["bbc.com"] == "bbc.co.uk" and aliases["eur-lex.europa.eu"] == "europa.eu"
     assert canonical_domain("bbc.com", aliases) == "bbc.co.uk"
     assert canonical_domain("rtp.pt", aliases) == "rtp.pt"
+
+
+def test_publish_languages_default_is_pt_and_es():
+    assert load_settings({}).publish_languages == ("pt-PT", "es")
+
+
+def test_publish_languages_come_from_a_comma_separated_variable():
+    assert load_settings({"PUBLISH_LANGUAGES": "pt-PT, es ,"}).publish_languages == ("pt-PT", "es")
+    assert load_settings({"PUBLISH_LANGUAGES": "pt-PT"}).publish_languages == ("pt-PT",)

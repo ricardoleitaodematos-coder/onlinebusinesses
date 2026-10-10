@@ -22,6 +22,7 @@ class Settings:
     picks_per_day: int
     llm_model: str
     telegram_chat_id: int | None
+    publish_languages: tuple[str, ...] = ("pt-PT", "es")
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,8 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         picks_per_day=int(env.get("PICKS_PER_DAY", "2")),
         llm_model=env.get("LLM_MODEL", ""),
         telegram_chat_id=int(chat) if chat else None,
+        publish_languages=tuple(x.strip() for x in env.get("PUBLISH_LANGUAGES", "pt-PT,es").split(",")
+                                if x.strip()),
     )
 
 

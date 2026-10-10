@@ -147,3 +147,32 @@ def test_proposal_buttons_carry_the_current_revision(tmp_path):
 def test_decision_with_revision_is_parsed_and_old_format_still_works(tmp_path):
     _, _, _, ch = setup(tmp_path, [cb(1, "p:ab12cd34:a:2"), cb(2, "p:ab12cd34:r")])
     assert ch.poll() == [ProposalDecision("ab12cd34", "accept", 2), ProposalDecision("ab12cd34", "reject", None)]
+
+
+def test_render_proposal_shows_the_es_version_when_there_is_one():
+    t = make_topic()
+    p = make_proposal(topic=t, script="Piada sobre a medida.")
+    text = render_proposal(p, t, es="Chiste sobre la medida.")
+    assert "Versão ES:\nChiste sobre la medida." in text
+    assert text.index("Piada sobre a medida.") < text.index("Versão ES:") < text.index("Afirmações e fontes:")
+    assert "Versão ES:" not in render_proposal(p, t) and "Versão ES:" not in render_proposal(p, t, es=None)
+
+
+def test_render_proposal_cuts_the_es_version_to_about_400_letters():
+    t = make_topic()
+    text = render_proposal(make_proposal(topic=t), t, es="ñ" * 1000)
+    assert "ñ" * 400 + "…" in text and "ñ" * 401 not in text
+
+
+def test_send_proposal_includes_the_stored_es_translation_within_telegram_limit(tmp_path):
+    store, topics, http, ch = setup(tmp_path)
+    p = make_proposal(topic=topics[0], script="Piada. " * 300)
+    store.save_proposals([p])
+    store.save_translation(p.id, "es", "Chiste en español neutro.")
+    ch.send_proposal(p, topics[0])
+    sent = http.sent("sendMessage")[-1]["text"]
+    assert len(sent) <= 4096 and "Versão ES:\nChiste en español neutro." in sent
+    other = make_proposal("cd34ef56", topic=topics[0])
+    store.save_proposals([other])
+    ch.send_proposal(other, topics[0])
+    assert "Versão ES:" not in http.sent("sendMessage")[-1]["text"]

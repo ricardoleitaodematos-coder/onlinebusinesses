@@ -101,6 +101,18 @@ def test_classify_invalid_json_falls_back():
     assert (out[0].category, out[0].travels) == ("other", False)
 
 
+def test_classify_forces_travels_by_category():
+    def run(category, travels):
+        llm = FakeLLM([json.dumps({"category": category, "travels": travels})])
+        return classify_topics([make_topic(category="other", travels=not travels)], llm)[0]
+
+    assert run("ai", False).travels is True
+    assert run("geopolitics", False).travels is True
+    assert run("national", True).travels is False
+    assert run("other", True).travels is True  # `other` mantém o que o LLM disse
+    assert run("other", False).travels is False
+
+
 def test_same_outlet_on_two_domains_is_one_source():
     aliases = {"bbc.com": "bbc.co.uk"}
     tiers = {"bbc.com": 1, "bbc.co.uk": 1}

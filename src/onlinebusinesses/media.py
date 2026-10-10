@@ -51,10 +51,13 @@ def _fit(segments: Sequence[Segment], duration: float) -> list[Segment]:
 
 
 def build_video(p: Proposal, lang: str, voice: Voice, visuals: Visuals, llm: LLMClient,
-                workdir: Path) -> tuple[Path, list[Asset]]:
+                workdir: Path, script: str | None = None) -> tuple[Path, list[Asset]]:
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    text = p.script_pt if lang == "pt-PT" else localize(p.script_pt, lang, llm)  # type: ignore[arg-type]
+    if script is not None:  # texto já adaptado (e verificado) por quem chama: não se volta a localizar
+        text = script
+    else:
+        text = p.script_pt if lang == "pt-PT" else localize(p.script_pt, lang, llm)  # type: ignore[arg-type]
     audio = voice.synthesize(text, lang, workdir / f"{p.id}-{lang}.wav")
     frames = visuals.render(p.visual_prompts, p.visual_style, workdir / f"{p.id}-frames")
     srt = workdir / f"{p.id}-{lang}.srt"

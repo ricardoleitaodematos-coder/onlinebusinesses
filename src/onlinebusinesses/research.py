@@ -161,6 +161,10 @@ def classify_topics(topics: Sequence[Topic], llm: LLMClient) -> list[Topic]:
             data = {}
         category = data.get("category") if data.get("category") in _CATEGORIES else "other"
         travels = data.get("travels") if isinstance(data.get("travels"), bool) else False
+        if category in ("ai", "geopolitics"):
+            travels = True  # decisão do Ricardo: IA e geopolítica viajam sempre (versão ES)
+        elif category == "national":
+            travels = False
         out.append(replace(t, category=category, travels=travels))
     return out
 
