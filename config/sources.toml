@@ -1,0 +1,90 @@
+# Nível de fiabilidade por domínio. 1 = agências, serviço público, documentação oficial; 2 = imprensa de referência.
+# Domínios que não constam aqui são nível 3 (só contexto, nunca contam como fonte).
+
+[[source]]
+domain = "rtp.pt"
+tier = 1
+
+[[source]]
+domain = "lusa.pt"
+tier = 1
+
+[[source]]
+domain = "reuters.com"
+tier = 1
+
+[[source]]
+domain = "apnews.com"
+tier = 1
+
+[[source]]
+domain = "bbc.co.uk"
+tier = 1
+
+[[source]]
+domain = "bbc.com"
+tier = 1
+
+[[source]]
+domain = "dw.com"
+tier = 1
+
+[[source]]
+domain = "europa.eu"
+tier = 1
+
+[[source]]
+domain = "eur-lex.europa.eu"
+tier = 1
+
+[[source]]
+domain = "publico.pt"
+tier = 2
+
+[[source]]
+domain = "observador.pt"
+tier = 2
+
+[[source]]
+domain = "expresso.pt"
+tier = 2
+
+[[source]]
+domain = "dn.pt"
+tier = 2
+
+[[source]]
+domain = "jn.pt"
+tier = 2
+
+[[source]]
+domain = "theguardian.com"
+tier = 2
+
+[[source]]
+domain = "aljazeera.com"
+tier = 2
+
+[[source]]
+domain = "euronews.com"
+tier = 2
+
+[[source]]
+domain = "arstechnica.com"
+tier = 2
+
+[[source]]
+domain = "techcrunch.com"
+tier = 2
+
+[[source]]
+domain = "nytimes.com"
+tier = 2
+
+[[source]]
+domain = "ft.com"
+tier = 2
+
+[[source]]
+domain = "economist.com"
+tier = 2

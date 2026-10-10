@@ -1,0 +1,36 @@
+# Feeds RSS verificados a 2026-10-10 (resposta 200). Expresso e BBC devolveram 403 e ficam de fora.
+[[feed]]
+outlet = "RTP Notícias"
+url = "https://www.rtp.pt/noticias/rss"
+
+[[feed]]
+outlet = "Observador"
+url = "https://observador.pt/feed/"
+
+[[feed]]
+outlet = "Público"
+url = "https://feeds.feedburner.com/PublicoRSS"
+
+[[feed]]
+outlet = "The Guardian World"
+url = "https://www.theguardian.com/world/rss"
+
+[[feed]]
+outlet = "Deutsche Welle"
+url = "https://rss.dw.com/rdf/rss-en-all"
+
+[[feed]]
+outlet = "Al Jazeera"
+url = "https://www.aljazeera.com/xml/rss/all.xml"
+
+[[feed]]
+outlet = "Euronews"
+url = "https://www.euronews.com/rss"
+
+[[feed]]
+outlet = "Ars Technica"
+url = "https://feeds.arstechnica.com/arstechnica/index"
+
+[[feed]]
+outlet = "TechCrunch IA"
+url = "https://techcrunch.com/category/artificial-intelligence/feed/"
