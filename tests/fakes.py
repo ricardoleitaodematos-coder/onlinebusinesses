@@ -79,3 +79,49 @@ class FakeApi:
 
     def put_bytes(self, url, data, headers):
         return self._answer("PUT", url, data, headers)
+
+
+class FakeChannel:
+    """Channel falso: guarda o que foi enviado e devolve os eventos pendentes uma só vez."""
+
+    def __init__(self, events=()):
+        self.events = list(events)
+        self.topics_sent, self.proposals_sent, self.feedback_asked, self.notes = [], [], [], []
+
+    def send_topics(self, day, topics):
+        self.topics_sent.append((day, list(topics)))
+
+    def send_proposal(self, p, topic):
+        self.proposals_sent.append(p)
+
+    def ask_feedback(self, proposal_id):
+        self.feedback_asked.append(proposal_id)
+
+    def notify(self, text):
+        self.notes.append(text)
+
+    def poll(self):
+        events, self.events = self.events, []
+        return events
+
+
+class FakePublisher:
+    def __init__(self, fail_times=0):
+        self.calls, self.fail_times = [], fail_times
+
+    def publish(self, video, caption, ai_label, key):
+        from onlinebusinesses.publishers.base import PublishError
+
+        self.calls.append((video, caption, ai_label, key))
+        if len(self.calls) <= self.fail_times:
+            raise PublishError("falhou")
+        return f"ext-{len(self.calls)}"
+
+
+def fake_builder(p, lang, voice, visuals, llm, workdir):
+    from onlinebusinesses.models import Asset
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    path = workdir / f"{p.id}-{lang}.mp4"
+    path.write_bytes(b"video")
+    return path, [Asset(str(path), "generated", None)]

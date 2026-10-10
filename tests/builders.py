@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from email.utils import format_datetime
 
 from onlinebusinesses.models import Claim, Proposal, Source, Topic
 
@@ -30,3 +31,10 @@ def make_proposal(pid="ab12cd34", topic=None, variant="A", claims=None, script="
     return Proposal(id=pid, topic_id=topic.id, variant=variant, script_pt=script, claims=tuple(claims),
                     visual_prompts=tuple(prompts), visual_style=style,
                     synthetic_voice=voice, synthetic_visuals=visuals)
+
+
+def rss(entries):
+    items = "".join(
+        f"<item><title>{t}</title><link>{link}</link><pubDate>{format_datetime(d)}</pubDate></item>"
+        for t, link, d in entries)
+    return f'<?xml version="1.0"?><rss version="2.0"><channel><title>x</title>{items}</channel></rss>'

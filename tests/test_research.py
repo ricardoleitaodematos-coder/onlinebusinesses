@@ -1,21 +1,13 @@
 import json
 from datetime import timedelta
-from email.utils import format_datetime
 
-from builders import NOW, make_source, make_topic
+from builders import NOW, make_source, make_topic, rss
 from fakes import FakeLLM, FakeSearch
 from onlinebusinesses.config import FeedConfig
 from onlinebusinesses.research import (add_context, classify_topics, cluster_topics, corroborate,
                                        fetch_items, rank_topics)
 
 TIERS = {"a.pt": 1, "b.com": 2, "c.org": 2}
-
-
-def rss(entries):
-    items = "".join(
-        f"<item><title>{t}</title><link>{link}</link><pubDate>{format_datetime(d)}</pubDate></item>"
-        for t, link, d in entries)
-    return f'<?xml version="1.0"?><rss version="2.0"><channel><title>x</title>{items}</channel></rss>'
 
 
 FEEDS = [FeedConfig("Quebrado", "https://down.pt/rss"), FeedConfig("Lixo", "https://bad.pt/rss"),

@@ -66,6 +66,19 @@ class Store:
                 "INSERT OR IGNORE INTO proposals (id, topic_id, variant, json) VALUES (?, ?, ?, ?)",
                 [(p.id, p.topic_id, p.variant, p.to_json()) for p in props])
 
+    def topic(self, topic_id: str) -> Topic:
+        rows = self._run("SELECT json FROM topics WHERE id = ? ORDER BY day DESC LIMIT 1", (topic_id,))
+        if not rows:
+            raise KeyError(topic_id)
+        return Topic.from_json(rows[0]["json"])
+
+    def proposal(self, proposal_id: str) -> Proposal:
+        return Proposal.from_json(self._one("SELECT json FROM proposals WHERE id = ?", proposal_id))
+
+    def proposals_by_status(self, status: Status) -> list[Proposal]:
+        rows = self._run("SELECT json FROM proposals WHERE status = ? ORDER BY rowid", (status,))
+        return [Proposal.from_json(r["json"]) for r in rows]
+
     def proposals_for(self, topic_id: str) -> list[Proposal]:
         rows = self._run("SELECT json FROM proposals WHERE topic_id = ? ORDER BY variant", (topic_id,))
         return [Proposal.from_json(r["json"]) for r in rows]

@@ -81,3 +81,15 @@ def test_selection_is_per_day_and_defaults_empty(store):
     store.set_selection(DAY, [1, 3])
     assert store.selection(DAY) == [1, 3]
     assert store.selection(date(2026, 10, 11)) == []
+
+
+def test_lookup_helpers(store):
+    t, a = make_topic("t1"), make_proposal("aaaaaaaa", variant="A")
+    store.save_topics(DAY, [t])
+    store.save_proposals([a, make_proposal("bbbbbbbb", variant="B")])
+    assert store.topic("t1") == t and store.proposal("aaaaaaaa") == a
+    store.set_status("aaaaaaaa", "approved")
+    assert store.proposals_by_status("approved") == [a]
+    assert [p.id for p in store.proposals_by_status("draft")] == ["bbbbbbbb"]
+    with pytest.raises(KeyError):
+        store.proposal("nope")
