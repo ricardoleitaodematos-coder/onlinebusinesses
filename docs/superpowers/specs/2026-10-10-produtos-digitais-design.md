@@ -116,16 +116,17 @@ Escolha final de ferramentas (agendador, base de dados, editor de vídeo, voz), 
 1. Idiomas: original PT-PT; PT-BR e ES por dobragem e legendas, adaptados ao local.
 2. Voz sintética (referência: a do Ricardo, com o consentimento dele) **com o rótulo de IA da plataforma**. Sem avatar com a imagem dele por defeito; avatar só na fase 2 e rotulado.
 3. Loja: Gumroad no arranque (decisão do agente; Pix e fiscalidade em Portugal por confirmar). Só relevante depois da fase 0.
+4. ES garantido na fase 0 (decisão do Ricardo, 2026-10-10): espanhol neutro nos temas que viajam (IA e geopolítica sempre; nacionais só PT); PT-BR adiado.
 
 **Em aberto**
-4. DMs: ManyChat ou bot próprio (depende da política da Meta).
-5. Nome da marca e dos canais.
-6. Onde corre o sistema continuamente (servidor pequeno ou serverless).
+5. DMs: ManyChat ou bot próprio (depende da política da Meta).
+6. Nome da marca e dos canais.
+7. Onde corre o sistema continuamente (servidor pequeno ou serverless).
 
 ## 15. Fase 0 — conta de teste da gestão automática (sem vendas)
 **Objetivo:** provar que o pipeline de gestão corre sozinho. **Sem** produtos, loja, afiliados, funil de venda ou email. O público de comédia não é o comprador de produtividade: o teste valida o pipeline, não a procura do nicho de produtos.
 
-**Conta de teste:** comédia e memes sobre a atualidade, com sátira e preocupação; tom jovem e atual. Temas: IA, geopolítica, assuntos nacionais importantes e caricatos. PT-PT no original; PT-BR e ES só nos temas que viajam (assuntos nacionais ficam em PT).
+**Conta de teste:** comédia e memes sobre a atualidade, com sátira e preocupação; tom jovem e atual. Temas: IA, geopolítica, assuntos nacionais importantes e caricatos. PT-PT no original. ES garantido na fase 0 (decisão do Ricardo, 2026-10-10): espanhol neutro nos temas que viajam (IA e geopolítica sempre; nacionais só PT); PT-BR adiado. O espanhol é neutro (América Latina e Espanha), por dobragem e legendas, e passa pelas mesmas barreiras que o PT-PT.
 
 **Processo criativo diário (definido pelo Ricardo)**
 1. O agente pesquisa todos os dias: **feeds RSS e pesquisa na web**, sempre com o contexto do tema e as fontes mais fidedignas. Cada tema precisa de **2 fontes independentes de nível 1 ou 2** (agências, serviço público, imprensa de referência, documentação oficial); blogs, redes sociais e fontes desconhecidas só dão contexto.

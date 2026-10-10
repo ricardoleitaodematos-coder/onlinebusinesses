@@ -15,8 +15,14 @@ python -m onlinebusinesses poll       # processa cliques e mensagens do Telegram
 python -m onlinebusinesses publish    # publica o aprovado; 7 dias após a 1.ª publicação, também o de hoje que passou as barreiras há 2 h
 python -m onlinebusinesses report     # métricas, A vs B e critério de sucesso (a partir da 2.ª semana)
 ```
-Variáveis: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `LLM_MODEL`, `ANTHROPIC_API_KEY`, opcionais `TIKTOK_ACCESS_TOKEN`,
-`DB_PATH`, `OUT_DIR`, `PUBLISH_HOLD_MINUTES` (janela de revisão, 120). Nada de segredos no repositório.
+Variáveis: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `LLM_MODEL`, `ANTHROPIC_API_KEY`, opcionais `TIKTOK_ACCESS_TOKEN`
+(conta PT-PT), `TIKTOK_ACCESS_TOKEN_ES` (conta TikTok em espanhol), `DB_PATH`, `OUT_DIR`, `PUBLISH_HOLD_MINUTES` (janela
+de revisão, 120) e `PUBLISH_LANGUAGES` (línguas a produzir e publicar, separadas por vírgulas; por omissão `pt-PT,es`).
+Nada de segredos no repositório.
+
+Línguas: o vídeo é sempre PT-PT; nos temas que viajam (IA e geopolítica sempre; nacionais só PT) produz-se também a versão
+ES (espanhol neutro, por dobragem e legendas), que o Ricardo vê na proposta («Versão ES:») e que passa pelas mesmas barreiras.
+Os publicadores são por plataforma (`instagram`, `tiktok`: PT-PT) ou por plataforma e língua (`instagram:es`, `tiktok:es`).
 
 ## Agendamento (crontab, hora de Lisboa)
 ```
