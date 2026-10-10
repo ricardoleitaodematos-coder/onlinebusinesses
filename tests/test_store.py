@@ -155,3 +155,12 @@ def test_revisions_starts_at_zero(store):
     assert store.revisions("ab12cd34") == 0
     store.bump_revision("ab12cd34")
     assert store.revisions("ab12cd34") == 1
+
+
+def test_translations_roundtrip_and_overwrite(store):
+    assert store.translation("aaaaaaaa", "es") is None
+    store.save_translation("aaaaaaaa", "es", "Texto en español.")
+    assert store.translation("aaaaaaaa", "es") == "Texto en español."
+    store.save_translation("aaaaaaaa", "es", "Otro texto.")
+    assert store.translation("aaaaaaaa", "es") == "Otro texto."
+    assert store.translation("aaaaaaaa", "pt-BR") is None and store.translation("bbbbbbbb", "es") is None

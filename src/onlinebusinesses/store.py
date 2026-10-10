@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS notices (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS decisions (proposal_id TEXT, action TEXT, day TEXT);
 CREATE TABLE IF NOT EXISTS insights (
   proposal_id TEXT, platform TEXT, json TEXT, PRIMARY KEY (proposal_id, platform));
+CREATE TABLE IF NOT EXISTS translations (
+  proposal_id TEXT, lang TEXT, text TEXT NOT NULL, PRIMARY KEY (proposal_id, lang));
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -139,6 +141,14 @@ class Store:
         if not rows:
             raise KeyError(key)
         return rows[0][0]
+
+    # traduções (texto do guião noutras línguas, p. ex. «es»)
+    def save_translation(self, proposal_id: str, lang: str, text: str) -> None:
+        self._run("INSERT OR REPLACE INTO translations VALUES (?, ?, ?)", (proposal_id, lang, text))
+
+    def translation(self, proposal_id: str, lang: str) -> str | None:
+        rows = self._run("SELECT text FROM translations WHERE proposal_id = ? AND lang = ?", (proposal_id, lang))
+        return rows[0][0] if rows else None
 
     # publicações
     def record_publication(self, proposal_id: str, platform: str, external_id: str, day: date | None = None) -> None:

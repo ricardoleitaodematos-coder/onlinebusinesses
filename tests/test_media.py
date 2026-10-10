@@ -91,3 +91,12 @@ def test_build_video_localizes_for_other_languages(media, tmp_path):
     out, _ = build_video(make_proposal(), "pt-BR", voice, FakeVisuals(frames), llm, tmp_path / "w")
     assert voice.calls == [("Texto adaptado para o Brasil.", "pt-BR")]
     assert "Texto adaptado" in (tmp_path / "w" / f"{make_proposal().id}-pt-BR.srt").read_text(encoding="utf-8")
+
+
+def test_build_video_uses_the_given_script_and_does_not_localize_again(media, tmp_path):
+    audio, frames, _ = media
+    llm = FakeLLM(["não deve ser chamado"])
+    voice = FakeVoice(audio)
+    build_video(make_proposal(), "es", voice, FakeVisuals(frames), llm, tmp_path / "w", script="Texto ya adaptado.")
+    assert llm.calls == [] and voice.calls == [("Texto ya adaptado.", "es")]
+    assert "Texto ya adaptado." in (tmp_path / "w" / f"{make_proposal().id}-es.srt").read_text(encoding="utf-8")
