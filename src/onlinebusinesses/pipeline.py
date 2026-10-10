@@ -180,11 +180,12 @@ class Pipeline:
             caption = caption_for(p, topic)
             video = self.workdir / f"{p.id}-{PUBLISH_LANGUAGES[0]}.mp4"
             for platform, publisher in self.publishers.items():
-                if self.store.publication(p.id, platform):
-                    continue
+                if self.store.publication(p.id, platform) or not self.store.claim_publication(p.id, platform, now):
+                    continue  # já publicada, ou outra execução está a publicá-la agora
                 try:
                     external_id = publisher.publish(video, caption, True, p.id)
                 except Exception as e:
+                    self.store.release_claim(p.id, platform)
                     self.channel.notify(f"Falhou a publicação da proposta {p.variant} de «{topic.title}» "
                                         f"em {platform}: {e}")
                     continue

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal, Sequence
 
@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS proposals (
   revisions INTEGER NOT NULL DEFAULT 0, status_at TEXT);
 CREATE TABLE IF NOT EXISTS publications (
   proposal_id TEXT, platform TEXT, external_id TEXT, published_on TEXT, PRIMARY KEY (proposal_id, platform));
+CREATE TABLE IF NOT EXISTS claims (
+  proposal_id TEXT, platform TEXT, claimed_at TEXT, PRIMARY KEY (proposal_id, platform));
 CREATE TABLE IF NOT EXISTS decisions (proposal_id TEXT, action TEXT, day TEXT);
 CREATE TABLE IF NOT EXISTS insights (
   proposal_id TEXT, platform TEXT, json TEXT, PRIMARY KEY (proposal_id, platform));
@@ -44,6 +46,10 @@ class Store:
     def _run(self, sql: str, params: Sequence = ()) -> list[sqlite3.Row]:
         with self._conn() as conn:
             return conn.execute(sql, params).fetchall()
+
+    def _exec(self, sql: str, params: Sequence = ()) -> int:
+        with self._conn() as conn:
+            return conn.execute(sql, params).rowcount
 
     def init(self) -> None:
         with self._conn() as conn:
@@ -131,6 +137,22 @@ class Store:
         """Dia da primeira publicação: começa aqui o período de aceitação obrigatória."""
         v = self._run("SELECT MIN(published_on) FROM publications WHERE published_on IS NOT NULL")[0][0]
         return date.fromisoformat(v) if v else None
+
+    CLAIM_TTL = timedelta(minutes=60)
+
+    def claim_publication(self, proposal_id: str, platform: str, now: datetime) -> bool:
+        """Reserva atómica antes do upload: só uma execução publica cada proposta+plataforma. Uma reserva parada há
+        mais de CLAIM_TTL sem publicação (processo morto a meio) pode ser retomada."""
+        not_published = "NOT EXISTS (SELECT 1 FROM publications WHERE proposal_id = ? AND platform = ?)"
+        key = (proposal_id, platform)
+        if self._exec(f"INSERT OR IGNORE INTO claims SELECT ?, ?, ? WHERE {not_published}", (*key, _ts(now), *key)):
+            return True
+        return bool(self._exec(f"UPDATE claims SET claimed_at = ? WHERE proposal_id = ? AND platform = ? "
+                               f"AND claimed_at < ? AND {not_published}",
+                               (_ts(now), *key, _ts(now - self.CLAIM_TTL), *key)))
+
+    def release_claim(self, proposal_id: str, platform: str) -> None:
+        self._run("DELETE FROM claims WHERE proposal_id = ? AND platform = ?", (proposal_id, platform))
 
     def all_publications(self) -> list[tuple[str, str, str]]:
         return [(r[0], r[1], r[2]) for r in self._run("SELECT proposal_id, platform, external_id FROM publications")]

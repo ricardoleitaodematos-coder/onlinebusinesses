@@ -115,3 +115,16 @@ def test_topic_day_and_status_at(store):
     assert store.status_at("ab12cd34") == at
     store.set_status("ab12cd34", "expired", at=at + timedelta(hours=1))
     assert store.status("ab12cd34") == "expired" and store.status_at("ab12cd34") == at + timedelta(hours=1)
+
+
+def test_claim_publication_is_exclusive_until_released_or_stale(store):
+    t = datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc)
+    assert store.claim_publication("p1", "instagram", t)
+    assert not store.claim_publication("p1", "instagram", t + timedelta(minutes=30))
+    assert store.claim_publication("p1", "tiktok", t)
+    assert store.claim_publication("p1", "instagram", t + timedelta(minutes=61))  # reserva parada há > 60 min
+    store.release_claim("p1", "instagram")
+    assert store.claim_publication("p1", "instagram", t + timedelta(minutes=62))
+    store.record_publication("p1", "instagram", "ig-1")
+    store.release_claim("p1", "instagram")
+    assert not store.claim_publication("p1", "instagram", t + timedelta(hours=5))  # já publicada

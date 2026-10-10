@@ -360,6 +360,38 @@ def test_publisher_failure_leaves_status_unpublished_and_retries_safely(env):
     assert pipe.stage_publish(NOW) == {} and len(flaky.calls) == 2
 
 
+def test_overlapping_runs_on_the_same_database_publish_once(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers={})
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    other_pub = FakePublisher()
+    other, *_ = env(seed_topics=False, publishers={"instagram": other_pub})
+
+    class SlowUpload(FakePublisher):
+        def publish(self, *args):
+            other.stage_publish(NOW)  # outra execução do cron arranca a meio do upload
+            return super().publish(*args)
+
+    slow = SlowUpload()
+    pipe.publishers = {"instagram": slow}
+    pipe.stage_publish(NOW)
+    assert len(slow.calls) + len(other_pub.calls) == 1
+    assert store.status(p.id) == "published"
+
+
+def test_failed_upload_releases_the_reservation(env):
+    flaky = FakePublisher(fail_times=1)
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers={"instagram": flaky})
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    pipe.stage_publish(NOW)
+    assert store.claim_publication(p.id, "instagram", NOW)
+
+
 def test_proposal_is_published_only_when_every_platform_succeeded(env):
     tiktok = FakePublisher(fail_times=1)
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")],

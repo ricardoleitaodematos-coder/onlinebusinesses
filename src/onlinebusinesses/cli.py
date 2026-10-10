@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import fcntl
 import sys
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Callable, Iterator, Mapping, Sequence
 
 import httpx
 
@@ -61,6 +63,19 @@ def redact(text: str, env: Mapping[str, str]) -> str:
     return text
 
 
+@contextmanager
+def command_lock(out_dir: Path, command: str) -> Iterator[bool]:
+    """Lock por comando (out_dir/.<comando>.lock): um cron sobreposto não corre o mesmo comando duas vezes."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / f".{command}.lock", "w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+
+
 def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping[str, str]], Pipeline] = build_pipeline,
          now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> int:
     usage = f"uso: python -m onlinebusinesses {{{'|'.join(COMMANDS)}}} (report aceita uma data AAAA-MM-DD)"
@@ -73,7 +88,10 @@ def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping
         print(usage, file=sys.stderr)
         return 2
     try:
-        return _run(argv[0], report_start, env, factory, now)
+        with command_lock(load_settings(env).out_dir, argv[0]) as acquired:
+            if not acquired:
+                return 0  # outra execução do mesmo comando ainda está a correr
+            return _run(argv[0], report_start, env, factory, now)
     except ConfigError as e:
         print(redact(f"configuração em falta: {e}", env), file=sys.stderr)
         return 1

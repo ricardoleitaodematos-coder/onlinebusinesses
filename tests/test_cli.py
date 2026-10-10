@@ -113,3 +113,17 @@ def test_unexpected_error_is_reported_with_tokens_redacted(tmp_path, capsys):
     assert main(["poll"], env, factory=lambda e: Boom(), now=lambda: NOW) == 1
     err = capsys.readouterr().err
     assert "TG-SEGREDO" not in err and "AK-SEGREDO" not in err and "***" in err
+
+
+def test_second_instance_does_nothing_while_the_command_lock_is_held(tmp_path):
+    import fcntl
+
+    rec, env = Recorder(), {"OUT_DIR": str(tmp_path)}
+    with open(tmp_path / ".publish.lock", "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert main(["publish"], env, factory=lambda e: rec, now=lambda: NOW) == 0
+        assert rec.calls == []
+        assert main(["poll"], env, factory=lambda e: rec, now=lambda: NOW) == 0  # o lock é por comando
+        assert rec.calls == [("poll", NOW)]
+    assert main(["publish"], env, factory=lambda e: rec, now=lambda: NOW) == 0
+    assert rec.calls[-1] == ("publish", NOW)
