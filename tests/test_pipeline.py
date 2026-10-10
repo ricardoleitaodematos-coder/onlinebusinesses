@@ -262,3 +262,14 @@ def test_caption_mentions_ai_and_topic():
     t, p = make_topic(), make_proposal()
     c = caption_for(p, t)
     assert "IA" in c and t.title in c
+
+
+def test_decisions_and_publication_day_are_recorded_for_metrics(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    pipe.stage_publish(NOW)
+    assert store.decisions_between(DAY, DAY) == 1
+    assert [(pid, plat, day) for pid, plat, _, day in store.publications_between(DAY, DAY)] == [(p.id, "instagram", DAY)]

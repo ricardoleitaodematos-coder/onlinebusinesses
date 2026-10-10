@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal, Sequence
 
-from .models import Proposal, Topic
+from .models import Insights, Proposal, Topic
 
 Status = Literal["draft", "gated", "approved", "rejected", "revising", "published"]
 
@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS proposals (
   status TEXT NOT NULL DEFAULT 'draft', reasons TEXT NOT NULL DEFAULT '[]',
   revisions INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS publications (
-  proposal_id TEXT, platform TEXT, external_id TEXT, PRIMARY KEY (proposal_id, platform));
+  proposal_id TEXT, platform TEXT, external_id TEXT, published_on TEXT, PRIMARY KEY (proposal_id, platform));
+CREATE TABLE IF NOT EXISTS decisions (proposal_id TEXT, action TEXT, day TEXT);
+CREATE TABLE IF NOT EXISTS insights (
+  proposal_id TEXT, platform TEXT, json TEXT, PRIMARY KEY (proposal_id, platform));
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -107,8 +110,33 @@ class Store:
         return rows[0][0]
 
     # publicações
-    def record_publication(self, proposal_id: str, platform: str, external_id: str) -> None:
-        self._run("INSERT OR IGNORE INTO publications VALUES (?, ?, ?)", (proposal_id, platform, external_id))
+    def record_publication(self, proposal_id: str, platform: str, external_id: str, day: date | None = None) -> None:
+        self._run("INSERT OR IGNORE INTO publications VALUES (?, ?, ?, ?)",
+                  (proposal_id, platform, external_id, day.isoformat() if day else None))
+
+    def all_publications(self) -> list[tuple[str, str, str]]:
+        return [(r[0], r[1], r[2]) for r in self._run("SELECT proposal_id, platform, external_id FROM publications")]
+
+    def publications_between(self, start: date, end: date) -> list[tuple[str, str, str, date]]:
+        rows = self._run("SELECT proposal_id, platform, external_id, published_on FROM publications "
+                         "WHERE published_on BETWEEN ? AND ? ORDER BY published_on, rowid",
+                         (start.isoformat(), end.isoformat()))
+        return [(r[0], r[1], r[2], date.fromisoformat(r[3])) for r in rows]
+
+    # decisões do Ricardo e métricas
+    def record_decision(self, proposal_id: str, action: str, day: date) -> None:
+        self._run("INSERT INTO decisions VALUES (?, ?, ?)", (proposal_id, action, day.isoformat()))
+
+    def decisions_between(self, start: date, end: date) -> int:
+        return self._run("SELECT COUNT(*) FROM decisions WHERE day BETWEEN ? AND ?",
+                         (start.isoformat(), end.isoformat()))[0][0]
+
+    def save_insights(self, proposal_id: str, platform: str, ins: Insights) -> None:
+        self._run("INSERT OR REPLACE INTO insights VALUES (?, ?, ?)", (proposal_id, platform, ins.to_json()))
+
+    def insights_for(self, proposal_id: str) -> list[tuple[str, Insights]]:
+        rows = self._run("SELECT platform, json FROM insights WHERE proposal_id = ? ORDER BY platform", (proposal_id,))
+        return [(r[0], Insights.from_json(r[1])) for r in rows]
 
     def publication(self, proposal_id: str, platform: str) -> str | None:
         rows = self._run("SELECT external_id FROM publications WHERE proposal_id = ? AND platform = ?",

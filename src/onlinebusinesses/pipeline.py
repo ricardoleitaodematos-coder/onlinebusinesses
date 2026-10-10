@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -58,9 +58,9 @@ class Pipeline:
             if isinstance(event, TopicsChosen):
                 self._on_choice(event)
             elif isinstance(event, ProposalDecision):
-                self._on_decision(event)
+                self._on_decision(event, today_lisbon(now))
             elif isinstance(event, Feedback):
-                self._on_feedback(event)
+                self._on_feedback(event, today_lisbon(now))
 
     def _on_choice(self, ev: TopicsChosen) -> None:
         if self.store.choice(ev.day):
@@ -112,7 +112,7 @@ class Pipeline:
         except KeyError:
             return None
 
-    def _on_decision(self, ev: ProposalDecision) -> None:
+    def _on_decision(self, ev: ProposalDecision, day: date) -> None:
         status = self._status(ev.proposal_id)
         if ev.action == "accept" and status == "gated":
             self.store.set_status(ev.proposal_id, "approved")
@@ -121,10 +121,14 @@ class Pipeline:
         elif ev.action == "improve" and status in ("gated", "approved"):
             self.store.set_status(ev.proposal_id, "revising")
             self.channel.ask_feedback(ev.proposal_id)
+        else:
+            return
+        self.store.record_decision(ev.proposal_id, ev.action, day)  # conta como intervenção (metrics.success)
 
-    def _on_feedback(self, ev: Feedback) -> None:
+    def _on_feedback(self, ev: Feedback, day: date) -> None:
         if self._status(ev.proposal_id) != "revising":
             return
+        self.store.record_decision(ev.proposal_id, "feedback", day)
         if self.store.bump_revision(ev.proposal_id) > self.settings.revision_limit:
             self.store.set_status(ev.proposal_id, "rejected", ["limite de revisões atingido"])
             self.channel.notify("Atingi o limite de revisões desta proposta; ficou rejeitada.")
@@ -162,7 +166,7 @@ class Pipeline:
                     self.channel.notify(f"Falhou a publicação da proposta {p.variant} de «{topic.title}» "
                                         f"em {platform}: {e}")
                     continue
-                self.store.record_publication(p.id, platform, external_id)
+                self.store.record_publication(p.id, platform, external_id, today_lisbon(now))
                 published[f"{p.id}:{platform}"] = external_id
                 self.channel.notify(self._published_note(platform, p, topic, external_id, caption))
             if self.publishers and all(self.store.publication(p.id, pl) for pl in self.publishers):

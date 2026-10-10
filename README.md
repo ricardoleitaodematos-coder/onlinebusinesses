@@ -13,6 +13,7 @@ pytest
 python -m onlinebusinesses research   # pesquisa e envia os 5 temas
 python -m onlinebusinesses poll       # processa cliques e mensagens do Telegram
 python -m onlinebusinesses publish    # publica o que está aprovado (ou passou as barreiras, depois de 7 dias)
+python -m onlinebusinesses report     # métricas, A vs B e critério de sucesso (a partir da 2.ª semana)
 ```
 Variáveis: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `LLM_MODEL`, `ANTHROPIC_API_KEY`, opcionais `TIKTOK_ACCESS_TOKEN`,
 `DB_PATH`, `OUT_DIR`. Nada de segredos no repositório.

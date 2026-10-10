@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 import httpx
 
 from .brief import TelegramChannel
-from .config import load_settings, load_sources
+from .config import load_settings, load_sources, today_lisbon
 from .gates import load_blocklist
 from .http import HttpxClient
 from .llm import build_llm
+from .metrics import collect_insights, weekly_report
 from .pipeline import Pipeline
 from .publishers.tiktok import TikTokDraftPublisher
 from .store import Store
 from .unconfigured import NullSearch, UnconfiguredVisuals, UnconfiguredVoice
 
-COMMANDS = ("research", "poll", "publish")
+COMMANDS = ("research", "poll", "publish", "report")
 
 
 class ConfigError(Exception):
@@ -54,14 +55,27 @@ def build_pipeline(env: Mapping[str, str]) -> Pipeline:
 
 def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping[str, str]], Pipeline] = build_pipeline,
          now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> int:
-    if len(argv) != 1 or argv[0] not in COMMANDS:
-        print(f"uso: python -m onlinebusinesses {{{'|'.join(COMMANDS)}}}", file=sys.stderr)
+    usage = f"uso: python -m onlinebusinesses {{{'|'.join(COMMANDS)}}} (report aceita uma data AAAA-MM-DD)"
+    if not argv or argv[0] not in COMMANDS or len(argv) > (2 if argv[0] == "report" else 1):
+        print(usage, file=sys.stderr)
+        return 2
+    try:
+        report_start = date.fromisoformat(argv[1]) if len(argv) == 2 else None
+    except ValueError:
+        print(usage, file=sys.stderr)
         return 2
     try:
         pipeline = factory(env)
     except ConfigError as e:
         print(f"configuração em falta: {e}", file=sys.stderr)
         return 1
+    if argv[0] == "report":
+        collect_insights(pipeline.store, pipeline.publishers)
+        first = pipeline.store.first_day()
+        start = report_start or (first + timedelta(days=pipeline.settings.require_accept_days) if first
+                                 else today_lisbon(now()))
+        print(weekly_report(pipeline.store, start))
+        return 0
     stage = {"research": pipeline.stage_research, "poll": pipeline.stage_poll, "publish": pipeline.stage_publish}
     stage[argv[0]](now())
     return 0

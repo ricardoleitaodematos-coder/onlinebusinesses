@@ -70,3 +70,33 @@ def test_unconfigured_providers_fail_with_a_pointer_to_the_setup_doc(tmp_path):
         UnconfiguredVoice().synthesize("t", "pt-PT", tmp_path / "a.wav")
     with pytest.raises(RuntimeError, match="setup-ricardo"):
         UnconfiguredVisuals().render(["x"], "cartoon", tmp_path)
+
+
+def report_pipeline(tmp_path):
+    from datetime import date
+
+    from onlinebusinesses.config import load_settings
+    from onlinebusinesses.store import Store
+
+    store = Store(tmp_path / "t.sqlite")
+    store.init()
+    store.set_first_day(date(2026, 10, 10))
+    return SimpleNamespace(store=store, publishers={}, settings=load_settings({}))
+
+
+def test_report_defaults_to_the_first_week_without_mandatory_approvals(tmp_path, capsys):
+    pipe = report_pipeline(tmp_path)
+    assert main(["report"], {}, factory=lambda env: pipe, now=lambda: NOW) == 0
+    out = capsys.readouterr().out
+    assert "Semana de 2026-10-17 a 2026-10-23" in out and "Sucesso: não" in out
+
+
+def test_report_accepts_an_explicit_start_date(tmp_path, capsys):
+    pipe = report_pipeline(tmp_path)
+    assert main(["report", "2026-11-01"], {}, factory=lambda env: pipe, now=lambda: NOW) == 0
+    assert "Semana de 2026-11-01 a 2026-11-07" in capsys.readouterr().out
+
+
+def test_report_rejects_a_bad_date(tmp_path, capsys):
+    pipe = report_pipeline(tmp_path)
+    assert main(["report", "ontem"], {}, factory=lambda env: pipe, now=lambda: NOW) == 2
