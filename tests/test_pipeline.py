@@ -607,6 +607,13 @@ def test_caption_uses_the_script_hook_not_the_raw_headline():
     assert t.title not in c and "inventou" not in c and "a.pt" in c
 
 
+def test_tiktok_draft_note_reminds_ai_label_and_carries_the_caption():
+    t, p = make_topic(), make_proposal(script="Primeira frase. Segunda.")
+    caption = caption_for(p, t)
+    note = Pipeline._published_note("tiktok", p, t, "pub-1", caption)
+    assert "rótulo de IA" in note and caption in note and "pub-1" in note
+
+
 def test_decisions_and_publication_day_are_recorded_for_metrics(env):
     pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
     pipe.stage_poll(NOW)
