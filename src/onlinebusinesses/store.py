@@ -8,7 +8,7 @@ from typing import Literal, Sequence
 
 from .models import Insights, Proposal, Topic
 
-Status = Literal["draft", "gated", "approved", "rejected", "revising", "published", "expired"]
+Status = Literal["draft", "producing", "gated", "approved", "rejected", "revising", "published", "expired"]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS topics (day TEXT, id TEXT, json TEXT, PRIMARY KEY (day, id));

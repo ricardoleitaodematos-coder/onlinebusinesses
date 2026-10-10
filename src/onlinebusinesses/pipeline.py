@@ -61,8 +61,8 @@ class Pipeline:
         if not top:
             self.channel.notify("Hoje não encontrei temas com duas fontes fiáveis independentes.")
             return []
+        self.channel.send_topics(day, top)  # enviar antes de gravar: se o envio falhar, a próxima execução repete
         self.store.save_topics(day, top)
-        self.channel.send_topics(day, top)
         return top
 
     def _sensitive(self, topic: Topic) -> bool:
@@ -70,13 +70,24 @@ class Pipeline:
 
     # --- escolha, geração e decisões ---------------------------------------------------------------------------
     def stage_poll(self, now: datetime) -> None:
+        for p in self.store.proposals_by_status("producing"):  # propostas prontas cujo envio falhou
+            self._send_proposal(p, self.store.topic(p.topic_id), now)
         for event in self.channel.poll(now):
-            if isinstance(event, TopicsChosen):
-                self._on_choice(event, now)
-            elif isinstance(event, ProposalDecision):
-                self._on_decision(event, now)
-            elif isinstance(event, Feedback):
-                self._on_feedback(event, now)
+            try:
+                if isinstance(event, TopicsChosen):
+                    self._on_choice(event, now)
+                elif isinstance(event, ProposalDecision):
+                    self._on_decision(event, now)
+                elif isinstance(event, Feedback):
+                    self._on_feedback(event, now)
+            except Exception as e:  # um evento com erro não faz perder os seguintes
+                self._safe_notify(f"Não consegui tratar uma ação tua ({type(event).__name__}): {e}")
+
+    def _safe_notify(self, text: str) -> None:
+        try:
+            self.channel.notify(text)
+        except Exception:
+            pass
 
     def _on_choice(self, ev: TopicsChosen, now: datetime) -> None:
         if ev.day != today_lisbon(now):  # escolha atrasada: os temas de ontem já não se geram
@@ -116,10 +127,19 @@ class Pipeline:
         legal = copyright_gate(assets)
         if not legal.passed:
             return self._reject(p, topic, legal.reasons, now)
-        if not self.store.set_status_if(p.id, ("draft", "revising"), "gated", at=now):
+        if not self.store.set_status_if(p.id, ("draft", "revising"), "producing", at=now):
             return False  # recusada (ou já tratada) enquanto se produzia
-        self.channel.send_proposal(p, topic)
-        return True
+        return self._send_proposal(p, topic, now)
+
+    def _send_proposal(self, p: Proposal, topic: Topic, now: datetime) -> bool:
+        """Só passa a `gated` depois de o Ricardo a ter recebido; se o envio falhar fica `producing` e o próximo
+        poll volta a tentar."""
+        try:
+            self.channel.send_proposal(p, topic)
+        except Exception as e:
+            self._safe_notify(f"Não consegui enviar a proposta {p.variant} de «{topic.title}»: {e}")
+            return False
+        return self.store.set_status_if(p.id, ("producing",), "gated", at=now)
 
     def _reject(self, p: Proposal, topic: Topic, reasons: Sequence[str], now: datetime) -> bool:
         self.store.set_status(p.id, "rejected", reasons, at=now)
@@ -137,7 +157,7 @@ class Pipeline:
         status = self._status(ev.proposal_id)
         if ev.action == "accept" and status == "gated":
             self.store.set_status(ev.proposal_id, "approved", at=now)
-        elif ev.action == "reject" and status in ("gated", "approved", "revising"):
+        elif ev.action == "reject" and status in ("gated", "approved", "revising", "producing"):
             self.store.set_status(ev.proposal_id, "rejected", ["recusada pelo Ricardo"], at=now)
         elif ev.action == "improve" and status in ("gated", "approved"):
             self.store.set_status(ev.proposal_id, "revising", at=now)
@@ -160,7 +180,7 @@ class Pipeline:
         try:
             new = revise_proposal(p, topic, ev.text, self.llm)
         except Exception as e:
-            self.store.set_status(p.id, "gated", at=now)
+            self.store.set_status_if(p.id, ("revising",), "gated", at=now)
             self.channel.notify(f"Não consegui rever a proposta {p.variant} de «{topic.title}»: {e}")
             return
         self.store.replace_proposal(new)

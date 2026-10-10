@@ -149,6 +149,22 @@ def test_caption_with_blocked_word_rejects_proposal(env, monkeypatch):
     assert all(store.status(p.id) == "rejected" for p in store.proposals_for("t1"))
 
 
+def test_topics_are_saved_only_after_they_were_sent(tmp_path, env):
+    pipe, store, channel, _, _ = env(seed_topics=False)
+    research_ready(tmp_path, pipe)
+    sent = channel.send_topics
+
+    def down(day, topics):
+        raise RuntimeError("Telegram em baixo")
+
+    channel.send_topics = down
+    with pytest.raises(RuntimeError):
+        pipe.stage_research(NOW)
+    assert store.topics(DAY) == []
+    channel.send_topics = sent
+    assert len(pipe.stage_research(NOW)) == 2 and len(channel.topics_sent) == 1 and len(store.topics(DAY)) == 2
+
+
 # --- escolha e geração ------------------------------------------------------------------------------------------
 
 def test_no_choice_generates_and_publishes_nothing(env):
@@ -208,6 +224,46 @@ def test_third_party_asset_rejects_after_production(env, monkeypatch):
     pipe.builder = builder
     pipe.stage_poll(NOW)
     assert channel.proposals_sent == [] and "terceiros" in " ".join(store.reasons(store.proposals_for("t1")[0].id))
+
+
+def test_one_failing_event_does_not_drop_the_rest(env):
+    pipe, store, channel, _, _ = env(events=[Feedback("ab12cd34", "x"), choose("t1", "t2")])
+
+    def boom(ev, now):
+        raise RuntimeError("rebentou")
+
+    pipe._on_feedback = boom
+    pipe.stage_poll(NOW)
+    assert len(channel.proposals_sent) == 4 and any("rebentou" in n for n in channel.notes)
+
+
+def test_failing_warning_does_not_stop_the_batch(env):
+    pipe, store, channel, _, _ = env(events=[Feedback("ab12cd34", "x"), choose("t1", "t2")])
+
+    def boom(*args):
+        raise RuntimeError("rebentou")
+
+    pipe._on_feedback = boom
+    channel.notify = boom
+    pipe.stage_poll(NOW)
+    assert len(channel.proposals_sent) == 4
+
+
+def test_proposal_stays_producing_until_sent_and_is_resent_on_next_poll(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+    send = channel.send_proposal
+
+    def down(p, topic):
+        raise RuntimeError("Telegram em baixo")
+
+    channel.send_proposal = down
+    pipe.stage_poll(NOW)
+    ids = [p.id for t in ("t1", "t2") for p in store.proposals_for(t)]
+    assert {store.status(i) for i in ids} == {"producing"}
+    assert pipe.stage_publish(NOW + timedelta(days=30)) == {}
+    channel.send_proposal = send
+    pipe.stage_poll(NOW)
+    assert {store.status(i) for i in ids} == {"gated"} and len(channel.proposals_sent) == 4
 
 
 def test_llm_failure_is_reported_not_raised(env):
