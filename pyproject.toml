@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "onlinebusinesses"
 version = "0.0.1"
 requires-python = ">=3.12"
-dependencies = ["httpx", "feedparser", "anthropic"]
+dependencies = ["httpx", "feedparser", "anthropic", "google-auth", "requests"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

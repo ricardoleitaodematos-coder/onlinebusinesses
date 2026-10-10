@@ -16,13 +16,19 @@ from .http import HttpxClient
 from .llm import build_llm
 from .metrics import collect_insights, weekly_report
 from .pipeline import Pipeline
+from .providers.brave import BraveSearch
+from .providers.google import GCSVideoHost, GoogleTTSVoice, ImagenVisuals, google_session_from_env
+from .publishers.instagram import InstagramPublisher
 from .publishers.tiktok import TikTokDraftPublisher
 from .store import Store
 from .unconfigured import NullSearch, UnconfiguredVisuals, UnconfiguredVoice
 
 COMMANDS = ("research", "poll", "publish", "report")
 SECRET_VARS = ("TELEGRAM_BOT_TOKEN", "ANTHROPIC_API_KEY", "TIKTOK_ACCESS_TOKEN", "TIKTOK_ACCESS_TOKEN_ES",
-               "INSTAGRAM_ACCESS_TOKEN")
+               "INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_ACCESS_TOKEN_ES", "BRAVE_API_KEY")
+DEFAULT_ENV_FILE = "/etc/onlinebusinesses.env"
+DEFAULT_VERTEX_LOCATION = "us-central1"  # regiões europeias do Imagen por confirmar (docs/compliance.md)
+DEFAULT_IMAGEN_MODEL = "imagen-4.0-generate-001"  # descontinuação anunciada a 2026-06-30: ver docs/compliance.md
 
 
 class ConfigError(Exception):
@@ -35,7 +41,28 @@ def _get_text(url: str) -> str:
     return response.text
 
 
-def build_pipeline(env: Mapping[str, str]) -> Pipeline:
+def load_env_file(env: Mapping[str, str]) -> dict[str, str]:
+    """Junta o ficheiro `.env` (ENV_FILE, por omissão /etc/onlinebusinesses.env) às variáveis; o ambiente real ganha."""
+    merged = dict(env)
+    path = Path(env.get("ENV_FILE", DEFAULT_ENV_FILE))
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return merged
+    for line in lines:
+        line = line.strip().removeprefix("export ").strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        name, value = name.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        merged.setdefault(name, value)
+    return merged
+
+
+def build_pipeline(env: Mapping[str, str],
+                   session_factory: Callable[[Mapping[str, str]], object] = google_session_from_env) -> Pipeline:
     settings = load_settings(env)
     token = env.get("TELEGRAM_BOT_TOKEN")
     if not token or settings.telegram_chat_id is None:
@@ -52,9 +79,23 @@ def build_pipeline(env: Mapping[str, str]) -> Pipeline:
         publishers["tiktok"] = TikTokDraftPublisher(http, env["TIKTOK_ACCESS_TOKEN"])
     if env.get("TIKTOK_ACCESS_TOKEN_ES"):  # conta TikTok em espanhol: publica a versão ES
         publishers["tiktok:es"] = TikTokDraftPublisher(http, env["TIKTOK_ACCESS_TOKEN_ES"])
-    # Instagram: precisa de um VideoHost real (URL público); por configurar, por isso não se regista aqui.
+    search = BraveSearch(http, env["BRAVE_API_KEY"]) if env.get("BRAVE_API_KEY") else NullSearch()
+    voice, visuals = UnconfiguredVoice(), UnconfiguredVisuals()
+    project, bucket = env.get("GOOGLE_CLOUD_PROJECT"), env.get("GCS_BUCKET")
+    if project or bucket:
+        session = session_factory(env)  # uma só sessão autenticada para TTS, Imagen e Cloud Storage
+        if project:
+            voice = GoogleTTSVoice.from_env(session, env)  # type: ignore[arg-type]
+            visuals = ImagenVisuals(session, project, env.get("VERTEX_LOCATION") or DEFAULT_VERTEX_LOCATION,  # type: ignore[arg-type]
+                                    env.get("IMAGEN_MODEL") or DEFAULT_IMAGEN_MODEL)
+        if bucket:  # o Instagram exige um URL público: só com alojamento no Cloud Storage
+            host = GCSVideoHost(session, bucket)  # type: ignore[arg-type]
+            for key, suffix in (("instagram", ""), ("instagram:es", "_ES")):
+                if env.get(f"INSTAGRAM_USER_ID{suffix}") and env.get(f"INSTAGRAM_ACCESS_TOKEN{suffix}"):
+                    publishers[key] = InstagramPublisher(http, host, env[f"INSTAGRAM_USER_ID{suffix}"],
+                                                         env[f"INSTAGRAM_ACCESS_TOKEN{suffix}"])
     return Pipeline(store, TelegramChannel(http, token, settings.telegram_chat_id, store, settings.picks_per_day),
-                    llm, NullSearch(), UnconfiguredVoice(), UnconfiguredVisuals(), publishers, settings, _get_text,
+                    llm, search, voice, visuals, publishers, settings, _get_text,
                     load_blocklist(Path("config/blocklist.toml")), load_sources(settings.sources_path),
                     settings.out_dir / "work", aliases=load_aliases(settings.sources_path))
 

@@ -146,3 +146,65 @@ def test_second_instance_does_nothing_while_the_command_lock_is_held(tmp_path):
         assert rec.calls == [("poll", NOW)]
     assert main(["publish"], env, factory=lambda e: rec, now=lambda: NOW) == 0
     assert rec.calls[-1] == ("publish", NOW)
+
+
+BASE = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1", "LLM_MODEL": "m", "ANTHROPIC_API_KEY": "k"}
+
+
+def google_env(tmp_path, **extra):
+    return {**BASE, "DB_PATH": str(tmp_path / "db.sqlite"), "GOOGLE_CLOUD_PROJECT": "proj", "GCS_BUCKET": "bkt", **extra}
+
+
+def test_google_providers_are_wired_when_project_is_set(tmp_path):
+    from onlinebusinesses.providers.google import GoogleTTSVoice, ImagenVisuals
+
+    made = []
+    pipe = build_pipeline(google_env(tmp_path, VERTEX_LOCATION="europe-west4", IMAGEN_MODEL="img-m"),
+                          session_factory=lambda env: made.append(1) or "SESSION")
+    assert isinstance(pipe.voice, GoogleTTSVoice) and isinstance(pipe.visuals, ImagenVisuals)
+    assert (pipe.visuals.project, pipe.visuals.location, pipe.visuals.model) == ("proj", "europe-west4", "img-m")
+    assert made == [1]  # uma só sessão partilhada
+
+
+def test_without_google_project_stays_unconfigured(tmp_path):
+    pipe = build_pipeline({**BASE, "DB_PATH": str(tmp_path / "db.sqlite")},
+                          session_factory=lambda env: pytest.fail("não devia criar sessão Google"))
+    assert isinstance(pipe.voice, UnconfiguredVoice) and isinstance(pipe.visuals, UnconfiguredVisuals)
+
+
+def test_brave_search_is_wired_when_key_is_set(tmp_path):
+    from onlinebusinesses.providers.brave import BraveSearch
+
+    pipe = build_pipeline({**BASE, "DB_PATH": str(tmp_path / "db.sqlite"), "BRAVE_API_KEY": "bk"})
+    assert isinstance(pipe.search, BraveSearch)
+
+
+def test_instagram_publishers_need_bucket_and_credentials(tmp_path):
+    from onlinebusinesses.providers.google import GCSVideoHost
+
+    env = google_env(tmp_path, INSTAGRAM_USER_ID="1", INSTAGRAM_ACCESS_TOKEN="a",
+                     INSTAGRAM_USER_ID_ES="2", INSTAGRAM_ACCESS_TOKEN_ES="b")
+    pipe = build_pipeline(env, session_factory=lambda e: "S")
+    assert list(pipe.publishers) == ["instagram", "instagram:es"]
+    assert isinstance(pipe.publishers["instagram"].host, GCSVideoHost) and pipe.publishers["instagram:es"].user_id == "2"
+    no_bucket = {k: v for k, v in env.items() if k != "GCS_BUCKET"}
+    assert list(build_pipeline(no_bucket, session_factory=lambda e: "S").publishers) == []
+    only_pt = {k: v for k, v in env.items() if not k.endswith("_ES")}
+    assert list(build_pipeline(only_pt, session_factory=lambda e: "S").publishers) == ["instagram"]
+
+
+def test_new_secrets_are_redacted():
+    from onlinebusinesses.cli import redact
+
+    env = {"BRAVE_API_KEY": "BR-S", "INSTAGRAM_ACCESS_TOKEN_ES": "IG-ES-S"}
+    assert redact("a BR-S b IG-ES-S", env) == "a *** b ***"
+
+
+def test_env_file_fills_missing_variables_only(tmp_path):
+    from onlinebusinesses.cli import load_env_file
+
+    f = tmp_path / "e.env"
+    f.write_text("# c\nA=1\nB='dois' \nexport C=\"três\"\n\nlinha inválida\nD=x=y\n")
+    merged = load_env_file({"A": "real", "ENV_FILE": str(f)})
+    assert merged["A"] == "real" and merged["B"] == "dois" and merged["C"] == "três" and merged["D"] == "x=y"
+    assert load_env_file({"ENV_FILE": str(tmp_path / "nao-existe")}) == {"ENV_FILE": str(tmp_path / "nao-existe")}
