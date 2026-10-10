@@ -128,18 +128,18 @@ Escolha final de ferramentas (agendador, base de dados, editor de vídeo, voz), 
 **Conta de teste:** comédia e memes sobre a atualidade, com sátira e preocupação; tom jovem e atual. Temas: IA, geopolítica, assuntos nacionais importantes e caricatos. PT-PT no original; PT-BR e ES só nos temas que viajam (assuntos nacionais ficam em PT).
 
 **Processo criativo diário (definido pelo Ricardo)**
-1. O agente pesquisa todos os dias (fontes fiáveis, com pelo menos duas fontes independentes por tema).
+1. O agente pesquisa todos os dias: **feeds RSS e pesquisa na web**, sempre com o contexto do tema e as fontes mais fidedignas. Cada tema precisa de **2 fontes independentes de nível 1 ou 2** (agências, serviço público, imprensa de referência, documentação oficial); blogs, redes sociais e fontes desconhecidas só dão contexto.
 2. Propõe **5 temas**.
-3. O Ricardo escolhe **2** (para já).
+3. O Ricardo escolhe **2** (para já), por **Telegram** com botões (decisão do agente; WhatsApp mais tarde, se quiser).
 4. O agente cria **2 propostas por cada tema escolhido** (4 no total).
-5. O agente publica. **Por defeito (decisão do agente): as duas propostas de cada tema**, para comparar versões. O Ricardo pode alterar.
+5. **Aprovação conversacional:** cada proposta chega ao Ricardo com os botões **Aceitar · Recusar · Melhorar**. «Melhorar» pede-lhe o que mudar e o agente revê (até 3 revisões). Depois o agente publica. **Por defeito (decisão do agente): as duas propostas de cada tema**, para comparar versões. Só se aceitam mensagens do chat do Ricardo.
 
 **Barreiras automáticas antes de publicar**
 - **Factos:** cada afirmação factual aponta para fonte; a piada exagera, o ponto de partida é verdadeiro. Sem fonte, não sai.
 - **Sensibilidade:** ficam sempre de fora mortes e tragédias recentes, menores, pessoas privadas, tragédias de guerra tratadas como piada e deepfakes realistas de políticos ou figuras públicas. Caricatura animada e claramente satírica é permitida; difamação e honra são riscos legais a confirmar para Portugal.
 - **Direitos de autor:** só visuais gerados por nós e música livre; nada de imagens, vídeo ou música de terceiros.
 - **Rótulos:** etiqueta de IA da plataforma em voz ou imagem sintéticas realistas.
-- **Primeira semana:** o Ricardo vê as 4 propostas antes de publicarem; depois reduz-se.
+- **Primeiros 7 dias:** só se publica o que o Ricardo aceitou. **Depois (decisão do agente):** publica-se o que passou nas barreiras e ele continua a poder recusar ou melhorar.
 
 **Critério de sucesso:** uma semana de publicação diária sem intervenção além da escolha dos 2 temas, com métricas dos próprios canais (sem metas de blogs de ferramentas).
 
