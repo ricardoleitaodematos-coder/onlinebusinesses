@@ -19,6 +19,7 @@ from .store import Store
 from .unconfigured import NullSearch, UnconfiguredVisuals, UnconfiguredVoice
 
 COMMANDS = ("research", "poll", "publish", "report")
+SECRET_VARS = ("TELEGRAM_BOT_TOKEN", "ANTHROPIC_API_KEY", "TIKTOK_ACCESS_TOKEN", "INSTAGRAM_ACCESS_TOKEN")
 
 
 class ConfigError(Exception):
@@ -53,6 +54,13 @@ def build_pipeline(env: Mapping[str, str]) -> Pipeline:
                     settings.out_dir / "work")
 
 
+def redact(text: str, env: Mapping[str, str]) -> str:
+    for name in SECRET_VARS:
+        if value := env.get(name):
+            text = text.replace(value, "***")
+    return text
+
+
 def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping[str, str]], Pipeline] = build_pipeline,
          now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> int:
     usage = f"uso: python -m onlinebusinesses {{{'|'.join(COMMANDS)}}} (report aceita uma data AAAA-MM-DD)"
@@ -65,11 +73,19 @@ def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping
         print(usage, file=sys.stderr)
         return 2
     try:
-        pipeline = factory(env)
+        return _run(argv[0], report_start, env, factory, now)
     except ConfigError as e:
-        print(f"configuração em falta: {e}", file=sys.stderr)
+        print(redact(f"configuração em falta: {e}", env), file=sys.stderr)
         return 1
-    if argv[0] == "report":
+    except Exception as e:  # nunca deixar sair um traceback com URLs ou tokens
+        print(redact(f"erro em {argv[0]}: {type(e).__name__}: {e}", env), file=sys.stderr)
+        return 1
+
+
+def _run(command: str, report_start: date | None, env: Mapping[str, str],
+         factory: Callable[[Mapping[str, str]], Pipeline], now: Callable[[], datetime]) -> int:
+    pipeline = factory(env)
+    if command == "report":
         collect_insights(pipeline.store, pipeline.publishers)
         first = pipeline.store.first_day()
         start = report_start or (first + timedelta(days=pipeline.settings.require_accept_days) if first
@@ -77,5 +93,5 @@ def main(argv: Sequence[str], env: Mapping[str, str], factory: Callable[[Mapping
         print(weekly_report(pipeline.store, start))
         return 0
     stage = {"research": pipeline.stage_research, "poll": pipeline.stage_poll, "publish": pipeline.stage_publish}
-    stage[argv[0]](now())
+    stage[command](now())
     return 0

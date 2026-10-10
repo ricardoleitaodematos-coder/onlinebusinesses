@@ -100,3 +100,14 @@ def test_report_accepts_an_explicit_start_date(tmp_path, capsys):
 def test_report_rejects_a_bad_date(tmp_path, capsys):
     pipe = report_pipeline(tmp_path)
     assert main(["report", "ontem"], {}, factory=lambda env: pipe, now=lambda: NOW) == 2
+
+
+def test_unexpected_error_is_reported_with_tokens_redacted(tmp_path, capsys):
+    class Boom(Recorder):
+        def stage_poll(self, now):
+            raise RuntimeError("POST https://api.telegram.org/botTG-SEGREDO/sendMessage falhou (chave AK-SEGREDO)")
+
+    env = {"TELEGRAM_BOT_TOKEN": "TG-SEGREDO", "ANTHROPIC_API_KEY": "AK-SEGREDO", "OUT_DIR": str(tmp_path)}
+    assert main(["poll"], env, factory=lambda e: Boom(), now=lambda: NOW) == 1
+    err = capsys.readouterr().err
+    assert "TG-SEGREDO" not in err and "AK-SEGREDO" not in err and "***" in err
