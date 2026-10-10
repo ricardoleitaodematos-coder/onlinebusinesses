@@ -75,7 +75,8 @@ def _trusted_domains(sources: Sequence[Source]) -> set[str]:
     return {s.domain for s in sources if s.tier <= MAX_TRUSTED_TIER}
 
 
-def cluster_topics(items: Sequence[Source]) -> list[Topic]:
+def cluster_topics(items: Sequence[Source], salt: str = "") -> list[Topic]:
+    """Agrupa notícias por título. `salt` (o dia) entra no id: os mesmos artigos noutro dia são outro tema."""
     trusted = [i for i in items if i.tier <= MAX_TRUSTED_TIER]
     groups: list[tuple[set[str], list[Source]]] = []
     for item in trusted:
@@ -90,7 +91,8 @@ def cluster_topics(items: Sequence[Source]) -> list[Topic]:
         domains = _trusted_domains(members)
         if len(domains) < 2:
             continue
-        tid = "t" + hashlib.sha1("|".join(sorted(m.id for m in members)).encode()).hexdigest()[:7]
+        key = "|".join(sorted(m.id for m in members))
+        tid = "t" + hashlib.sha1(f"{salt}#{key}".encode() if salt else key.encode()).hexdigest()[:7]
         topics.append(Topic(id=tid, title=members[0].title, summary="Fontes: " + ", ".join(sorted(domains)),
                             sources=tuple(members), category="other", travels=False, context=""))
     return topics

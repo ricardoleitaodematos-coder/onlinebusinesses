@@ -43,7 +43,7 @@ class Pipeline:
         if existing := self.store.topics(day):
             return existing
         items = fetch_items(load_feeds(self.settings.feeds_path), self.tiers, self.http, now, aliases=self.aliases)
-        topics = [corroborate(t, self.search, self.tiers, now, aliases=self.aliases) for t in cluster_topics(items)]
+        topics = [corroborate(t, self.search, self.tiers, now, aliases=self.aliases) for t in cluster_topics(items, salt=day.isoformat())]
         top = rank_topics(topics, self.settings.topics_per_day)
         top = classify_topics([add_context(t, self.http) for t in top], self.llm)
         if not top:

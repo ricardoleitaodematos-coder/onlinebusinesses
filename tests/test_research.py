@@ -119,3 +119,11 @@ def test_corroborate_stores_canonical_domain():
     out = corroborate(topic, FakeSearch(found), {"a.pt": 1, "bbc.com": 1, "bbc.co.uk": 1}, NOW,
                       aliases={"bbc.com": "bbc.co.uk"})
     assert {s.domain for s in out.sources} == {"a.pt", "bbc.co.uk"}
+
+
+def test_topic_id_depends_on_salt():
+    items = [make_source("a.pt", 1, "Governo aprova nova lei da habitação", "s1"),
+             make_source("b.com", 2, "Nova lei da habitação aprovada pelo Governo", "s2")]
+    day1, day2 = cluster_topics(items, salt="2026-10-10"), cluster_topics(items, salt="2026-10-11")
+    assert len(day1) == len(day2) == 1 and day1[0].id != day2[0].id
+    assert cluster_topics(items, salt="2026-10-10")[0].id == day1[0].id

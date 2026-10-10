@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -74,6 +75,53 @@ def test_research_survives_search_failure(tmp_path, env):
     pipe.http = lambda url: feeds[url]
     pipe.search.error = RuntimeError("pesquisa em baixo")
     assert len(pipe.stage_research(NOW)) == 1
+
+
+class RoutingLLM:
+    """Classifica temas e gera propostas conforme o pedido."""
+
+    def __init__(self):
+        self.calls = []
+
+    def complete(self, system, user):
+        self.calls.append((system, user))
+        if system.startswith("Classifica"):
+            return '{"category": "ai", "travels": true}'
+        return proposals_json(cite=re.search(r"id=(\w+)", user).group(1))
+
+
+TWO_TOPIC_FEEDS = {
+    "https://a.pt/rss": rss([("Governo aprova nova lei da habitação", "https://a.pt/n/1", NOW),
+                             ("Parlamento debate orçamento do Estado para 2027", "https://a.pt/n/2", NOW)]),
+    "https://b.com/rss": rss([("Nova lei da habitação aprovada pelo Governo", "https://b.com/n/1", NOW),
+                              ("Orçamento do Estado para 2027 debatido no Parlamento", "https://b.com/n/2", NOW)])}
+
+
+def research_ready(tmp_path, pipe, feeds=TWO_TOPIC_FEEDS):
+    (tmp_path / "feeds.toml").write_text('[[feed]]\noutlet = "A"\nurl = "https://a.pt/rss"\n'
+                                         '[[feed]]\noutlet = "B"\nurl = "https://b.com/rss"\n', encoding="utf-8")
+    pipe.http = lambda url: feeds.get(url, "")
+    pipe.llm = RoutingLLM()
+
+
+def test_same_articles_on_two_days_get_new_topic_and_proposal_ids(tmp_path, env):
+    pipe, store, channel, _, _ = env(seed_topics=False)
+    research_ready(tmp_path, pipe)
+    day1 = pipe.stage_research(NOW)
+    assert len(day1) == 2
+    channel.events = [TopicsChosen(DAY, tuple(t.id for t in day1))]
+    pipe.stage_poll(NOW)
+    old = store.proposals_for(day1[0].id)[0]
+    channel.events = [ProposalDecision(old.id, "reject")]
+    pipe.stage_poll(NOW)
+    later = NOW + timedelta(days=1)
+    day2 = pipe.stage_research(later)
+    assert {t.id for t in day2}.isdisjoint({t.id for t in day1})
+    channel.events = [TopicsChosen(DAY + timedelta(days=1), tuple(t.id for t in day2))]
+    pipe.stage_poll(later)
+    new_ids = {p.id for t in day2 for p in store.proposals_for(t.id)}
+    assert len(new_ids) == 4 and old.id not in new_ids
+    assert store.status(old.id) == "rejected"
 
 
 # --- escolha e geração ------------------------------------------------------------------------------------------
