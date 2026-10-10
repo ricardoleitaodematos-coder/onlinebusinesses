@@ -1,7 +1,8 @@
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from onlinebusinesses.config import load_feeds, load_settings, load_sources, tier_of, today_lisbon
+from onlinebusinesses.config import (canonical_domain, load_aliases, load_feeds, load_settings, load_sources, tier_of,
+                                     today_lisbon)
 
 
 def test_today_lisbon_at_midnight():
@@ -34,3 +35,10 @@ def test_load_sources_and_tier_of_unknown_is_3(tmp_path):
     tiers = load_sources(f)
     assert tier_of("bbc.co.uk", tiers) == 1
     assert tier_of("blog.example", tiers) == 3
+
+
+def test_aliases_from_the_real_sources_file():
+    aliases = load_aliases(Path("config/sources.toml"))
+    assert aliases["bbc.com"] == "bbc.co.uk" and aliases["eur-lex.europa.eu"] == "europa.eu"
+    assert canonical_domain("bbc.com", aliases) == "bbc.co.uk"
+    assert canonical_domain("rtp.pt", aliases) == "rtp.pt"

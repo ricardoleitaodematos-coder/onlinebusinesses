@@ -62,3 +62,13 @@ def tier_of(domain: str, tiers: Mapping[str, int]) -> int:
 
 def today_lisbon(now: datetime) -> date:
     return now.astimezone(ZoneInfo("Europe/Lisbon")).date()
+
+
+def load_aliases(path: Path) -> dict[str, str]:
+    """Domínios do mesmo órgão (`same_as`): contam como uma só fonte."""
+    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return {s["domain"]: s["same_as"] for s in data.get("source", []) if s.get("same_as")}
+
+
+def canonical_domain(domain: str, aliases: Mapping[str, str]) -> str:
+    return aliases.get(domain, domain)

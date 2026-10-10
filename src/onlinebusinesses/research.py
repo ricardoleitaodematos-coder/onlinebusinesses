@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import feedparser
 
-from .config import FeedConfig, tier_of
+from .config import FeedConfig, canonical_domain, tier_of
 from .llm import LLMClient, parse_json_object
 from .models import Source, Topic
 
@@ -34,8 +34,14 @@ def _source_id(url: str) -> str:
     return hashlib.sha1(url.encode()).hexdigest()[:8]
 
 
+def _canonical(domain: str, tiers: Mapping[str, int], aliases: Mapping[str, str]) -> tuple[str, int]:
+    canonical = canonical_domain(domain, aliases)
+    return canonical, tier_of(domain if domain in tiers else canonical, tiers)
+
+
 def fetch_items(feeds: Sequence[FeedConfig], tiers: Mapping[str, int], http: HttpGet, now: datetime,
-                max_age_hours: int = 36) -> list[Source]:
+                max_age_hours: int = 36, aliases: Mapping[str, str] | None = None) -> list[Source]:
+    aliases = aliases or {}
     items: list[Source] = []
     oldest = now - timedelta(hours=max_age_hours)
     for feed in feeds:
@@ -50,9 +56,9 @@ def fetch_items(feeds: Sequence[FeedConfig], tiers: Mapping[str, int], http: Htt
             published = datetime(*stamp[:6], tzinfo=timezone.utc)
             if published < oldest:
                 continue
-            domain = _domain(link)
+            domain, tier = _canonical(_domain(link), tiers, aliases)
             items.append(Source(id=_source_id(link), url=link, domain=domain, title=title, outlet=feed.outlet,
-                                published_at=published, tier=tier_of(domain, tiers)))  # type: ignore[arg-type]
+                                published_at=published, tier=tier))  # type: ignore[arg-type]
     return items
 
 
@@ -90,7 +96,9 @@ def cluster_topics(items: Sequence[Source]) -> list[Topic]:
     return topics
 
 
-def corroborate(topic: Topic, search: SearchProvider, tiers: Mapping[str, int], now: datetime) -> Topic:
+def corroborate(topic: Topic, search: SearchProvider, tiers: Mapping[str, int], now: datetime,
+                aliases: Mapping[str, str] | None = None) -> Topic:
+    aliases = aliases or {}
     try:
         found = search.search(topic.title, now - timedelta(hours=36))
     except Exception:
@@ -98,7 +106,8 @@ def corroborate(topic: Topic, search: SearchProvider, tiers: Mapping[str, int], 
     known = {s.url for s in topic.sources}
     extra = []
     for s in found:
-        s = replace(s, tier=tier_of(s.domain, tiers))  # type: ignore[arg-type]
+        domain, tier = _canonical(s.domain, tiers, aliases)
+        s = replace(s, domain=domain, tier=tier)  # type: ignore[arg-type]
         if s.tier <= MAX_TRUSTED_TIER and s.url not in known:
             known.add(s.url)
             extra.append(s)

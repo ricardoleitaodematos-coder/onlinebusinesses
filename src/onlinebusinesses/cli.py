@@ -8,7 +8,7 @@ from typing import Callable, Mapping, Sequence
 import httpx
 
 from .brief import TelegramChannel
-from .config import load_settings, load_sources, today_lisbon
+from .config import load_aliases, load_settings, load_sources, today_lisbon
 from .gates import load_blocklist
 from .http import HttpxClient
 from .llm import build_llm
@@ -51,7 +51,7 @@ def build_pipeline(env: Mapping[str, str]) -> Pipeline:
     return Pipeline(store, TelegramChannel(http, token, settings.telegram_chat_id, store, settings.picks_per_day),
                     llm, NullSearch(), UnconfiguredVoice(), UnconfiguredVisuals(), publishers, settings, _get_text,
                     load_blocklist(Path("config/blocklist.toml")), load_sources(settings.sources_path),
-                    settings.out_dir / "work")
+                    settings.out_dir / "work", aliases=load_aliases(settings.sources_path))
 
 
 def redact(text: str, env: Mapping[str, str]) -> str:

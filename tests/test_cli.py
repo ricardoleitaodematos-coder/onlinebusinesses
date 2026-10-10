@@ -56,6 +56,7 @@ def test_build_pipeline_with_minimal_env(tmp_path):
     pipe = build_pipeline(env)
     assert isinstance(pipe, Pipeline) and pipe.publishers == {}
     assert isinstance(pipe.search, NullSearch)
+    assert pipe.aliases["bbc.com"] == "bbc.co.uk"
 
 
 def test_tiktok_publisher_is_added_when_token_is_set(tmp_path):

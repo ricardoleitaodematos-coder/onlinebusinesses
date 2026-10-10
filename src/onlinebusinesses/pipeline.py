@@ -30,10 +30,11 @@ class Pipeline:
     def __init__(self, store: Store, channel: Channel, llm: LLMClient, search: SearchProvider, voice: Voice | None,
                  visuals: Visuals | None, publishers: Mapping[str, Publisher], settings: Settings, http: HttpGet,
                  blocklist: Mapping[str, Sequence[str]], tiers: Mapping[str, int], workdir: Path,
-                 builder: Callable = build_video):
+                 builder: Callable = build_video, aliases: Mapping[str, str] | None = None):
         self.store, self.channel, self.llm, self.search = store, channel, llm, search
         self.voice, self.visuals, self.publishers, self.settings = voice, visuals, publishers, settings
         self.http, self.blocklist, self.tiers, self.workdir, self.builder = http, blocklist, tiers, Path(workdir), builder
+        self.aliases = dict(aliases or {})
 
     # --- pesquisa -----------------------------------------------------------------------------------------------
     def stage_research(self, now: datetime) -> list[Topic]:
@@ -41,8 +42,8 @@ class Pipeline:
         self.store.set_first_day(day)
         if existing := self.store.topics(day):
             return existing
-        items = fetch_items(load_feeds(self.settings.feeds_path), self.tiers, self.http, now)
-        topics = [corroborate(t, self.search, self.tiers, now) for t in cluster_topics(items)]
+        items = fetch_items(load_feeds(self.settings.feeds_path), self.tiers, self.http, now, aliases=self.aliases)
+        topics = [corroborate(t, self.search, self.tiers, now, aliases=self.aliases) for t in cluster_topics(items)]
         top = rank_topics(topics, self.settings.topics_per_day)
         top = classify_topics([add_context(t, self.http) for t in top], self.llm)
         if not top:

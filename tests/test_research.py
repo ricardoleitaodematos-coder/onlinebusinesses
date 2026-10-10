@@ -99,3 +99,23 @@ def test_classify_sets_category_and_travels():
 def test_classify_invalid_json_falls_back():
     out = classify_topics([make_topic(category="ai", travels=True)], FakeLLM(["isto não é json"]))
     assert (out[0].category, out[0].travels) == ("other", False)
+
+
+def test_same_outlet_on_two_domains_is_one_source():
+    aliases = {"bbc.com": "bbc.co.uk"}
+    tiers = {"bbc.com": 1, "bbc.co.uk": 1}
+    xml = {"https://bbc.com/rss": rss([("Governo aprova nova lei da habitação", "https://www.bbc.com/n/1", NOW)]),
+           "https://bbc.co.uk/rss": rss([("Nova lei da habitação aprovada pelo Governo", "https://bbc.co.uk/n/2",
+                                          NOW)])}
+    feeds = [FeedConfig("BBC", "https://bbc.com/rss"), FeedConfig("BBC UK", "https://bbc.co.uk/rss")]
+    items = fetch_items(feeds, tiers, lambda u: xml[u], NOW, aliases=aliases)
+    assert {i.domain for i in items} == {"bbc.co.uk"}
+    assert cluster_topics(items) == []
+
+
+def test_corroborate_stores_canonical_domain():
+    topic = make_topic(sources=[make_source("a.pt", 1, sid="s1"), make_source("bbc.co.uk", 1, sid="s2")])
+    found = [make_source("bbc.com", 1, "x", "s3")]
+    out = corroborate(topic, FakeSearch(found), {"a.pt": 1, "bbc.com": 1, "bbc.co.uk": 1}, NOW,
+                      aliases={"bbc.com": "bbc.co.uk"})
+    assert {s.domain for s in out.sources} == {"a.pt", "bbc.co.uk"}

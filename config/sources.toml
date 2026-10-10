@@ -1,5 +1,6 @@
 # Nível de fiabilidade por domínio. 1 = agências, serviço público, documentação oficial; 2 = imprensa de referência.
 # Domínios que não constam aqui são nível 3 (só contexto, nunca contam como fonte).
+# `same_as` junta domínios do mesmo órgão: contam como uma só fonte (nunca como duas independentes).
 
 [[source]]
 domain = "rtp.pt"
@@ -24,6 +25,7 @@ tier = 1
 [[source]]
 domain = "bbc.com"
 tier = 1
+same_as = "bbc.co.uk"
 
 [[source]]
 domain = "dw.com"
@@ -36,6 +38,7 @@ tier = 1
 [[source]]
 domain = "eur-lex.europa.eu"
 tier = 1
+same_as = "europa.eu"
 
 [[source]]
 domain = "publico.pt"
