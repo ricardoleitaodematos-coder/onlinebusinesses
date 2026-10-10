@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS publications (
   proposal_id TEXT, platform TEXT, external_id TEXT, published_on TEXT, PRIMARY KEY (proposal_id, platform));
 CREATE TABLE IF NOT EXISTS claims (
   proposal_id TEXT, platform TEXT, claimed_at TEXT, PRIMARY KEY (proposal_id, platform));
+CREATE TABLE IF NOT EXISTS notices (key TEXT PRIMARY KEY, at TEXT);
 CREATE TABLE IF NOT EXISTS decisions (proposal_id TEXT, action TEXT, day TEXT);
 CREATE TABLE IF NOT EXISTS insights (
   proposal_id TEXT, platform TEXT, json TEXT, PRIMARY KEY (proposal_id, platform));
@@ -190,6 +191,14 @@ class Store:
         rows = self._run("SELECT external_id FROM publications WHERE proposal_id = ? AND platform = ?",
                          (proposal_id, platform))
         return rows[0][0] if rows else None
+
+    def should_notify(self, key: str, now: datetime, min_gap: timedelta = timedelta(hours=1)) -> bool:
+        """Verdadeiro (e grava a hora) se não houve aviso com esta chave há menos de `min_gap`."""
+        with self._conn() as conn:
+            changed = conn.execute(
+                "INSERT INTO notices VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET at = excluded.at "
+                "WHERE notices.at <= ?", (key, _ts(now), _ts(now - min_gap))).rowcount
+        return bool(changed)
 
     # meta
     def _get_meta(self, key: str) -> str | None:

@@ -138,3 +138,13 @@ def test_set_status_if_only_changes_expected_states(store):
     store.set_status("ab12cd34", "approved")
     assert store.set_status_if("ab12cd34", ("approved", "gated"), "published")
     assert store.status("ab12cd34") == "published"
+
+
+def test_should_notify_at_most_once_per_gap(store):
+    t = datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc)
+    assert store.should_notify("publish:p1:instagram:PublishError", t)
+    assert not store.should_notify("publish:p1:instagram:PublishError", t + timedelta(minutes=59))
+    assert store.should_notify("publish:p1:tiktok:PublishError", t)
+    assert store.should_notify("publish:p1:instagram:PublishError", t + timedelta(minutes=61))
+    assert store.should_notify("k", t, min_gap=timedelta(minutes=5))
+    assert store.should_notify("k", t + timedelta(minutes=6), min_gap=timedelta(minutes=5))

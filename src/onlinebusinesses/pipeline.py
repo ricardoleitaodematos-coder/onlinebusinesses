@@ -83,6 +83,11 @@ class Pipeline:
             except Exception as e:  # um evento com erro não faz perder os seguintes
                 self._safe_notify(f"Não consegui tratar uma ação tua ({type(event).__name__}): {e}")
 
+    def _notify_once(self, key: str, now: datetime, text: str) -> None:
+        """Avisos de falhas repetidas: no máximo um por chave (proposta, plataforma, tipo de erro) por hora."""
+        if self.store.should_notify(key, now):
+            self._safe_notify(text)
+
     def _safe_notify(self, text: str) -> None:
         try:
             self.channel.notify(text)
@@ -137,7 +142,8 @@ class Pipeline:
         try:
             self.channel.send_proposal(p, topic)
         except Exception as e:
-            self._safe_notify(f"Não consegui enviar a proposta {p.variant} de «{topic.title}»: {e}")
+            self._notify_once(f"send:{p.id}:telegram:{type(e).__name__}", now,
+                              f"Não consegui enviar a proposta {p.variant} de «{topic.title}»: {e}")
             return False
         return self.store.set_status_if(p.id, ("producing",), "gated", at=now)
 
@@ -215,8 +221,9 @@ class Pipeline:
                     external_id = publisher.publish(video, caption, True, p.id)
                 except Exception as e:
                     self.store.release_claim(p.id, platform)
-                    self.channel.notify(f"Falhou a publicação da proposta {p.variant} de «{topic.title}» "
-                                        f"em {platform}: {e}")
+                    self._notify_once(f"publish:{p.id}:{platform}:{type(e).__name__}", now,
+                                      f"Falhou a publicação da proposta {p.variant} de «{topic.title}» "
+                                      f"em {platform}: {e}")
                     continue
                 self.store.record_publication(p.id, platform, external_id, today_lisbon(now))
                 published[f"{p.id}:{platform}"] = external_id

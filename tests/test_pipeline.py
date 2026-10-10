@@ -512,6 +512,31 @@ def test_revision_stays_revising_until_the_new_video_is_built(env):
     assert seen == ["revising"] and store.status(p.id) == "gated"
 
 
+def test_publisher_failing_ten_runs_in_a_row_warns_once(env):
+    broken = FakePublisher(fail_times=1000)
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers={"instagram": broken})
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    for i in range(10):
+        pipe.stage_publish(NOW + timedelta(minutes=i))
+    assert len(broken.calls) == 10
+    assert len([n for n in channel.notes if "Falhou a publicação" in n]) == 1
+
+
+def test_proposal_send_failures_warn_once_per_proposal(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+
+    def down(p, topic):
+        raise RuntimeError("Telegram em baixo")
+
+    channel.send_proposal = down
+    for i in range(10):
+        pipe.stage_poll(NOW + timedelta(minutes=i))
+    assert len([n for n in channel.notes if "Não consegui enviar" in n]) == 4
+
+
 def test_proposal_is_published_only_when_every_platform_succeeded(env):
     tiktok = FakePublisher(fail_times=1)
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")],
