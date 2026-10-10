@@ -65,6 +65,25 @@ def test_tiktok_publisher_is_added_when_token_is_set(tmp_path):
     assert list(build_pipeline(env).publishers) == ["tiktok"]
 
 
+def test_es_tiktok_publisher_is_registered_per_language(tmp_path):
+    env = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "1", "LLM_MODEL": "m", "ANTHROPIC_API_KEY": "k",
+           "DB_PATH": str(tmp_path / "db.sqlite"), "TIKTOK_ACCESS_TOKEN_ES": "x"}
+    assert list(build_pipeline(env).publishers) == ["tiktok:es"]
+    both = build_pipeline({**env, "TIKTOK_ACCESS_TOKEN": "y"})
+    assert list(both.publishers) == ["tiktok", "tiktok:es"] and both.settings.publish_languages == ("pt-PT", "es")
+
+
+def test_es_tiktok_token_is_redacted(tmp_path, capsys):
+    class Boom(Recorder):
+        def stage_poll(self, now):
+            raise RuntimeError("falhou com TT-ES-SEGREDO")
+
+    env = {"TIKTOK_ACCESS_TOKEN_ES": "TT-ES-SEGREDO", "OUT_DIR": str(tmp_path)}
+    assert main(["poll"], env, factory=lambda e: Boom(), now=lambda: NOW) == 1
+    err = capsys.readouterr().err
+    assert "TT-ES-SEGREDO" not in err and "***" in err
+
+
 def test_unconfigured_providers_fail_with_a_pointer_to_the_setup_doc(tmp_path):
     assert NullSearch().search("x", NOW) == []
     with pytest.raises(RuntimeError, match="setup-ricardo"):
