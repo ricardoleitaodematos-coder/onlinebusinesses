@@ -120,7 +120,8 @@ class Pipeline:
             self._produce(p, topic, now)
 
     def _produce(self, p: Proposal, topic: Topic, now: datetime) -> bool:
-        text = run_gates(p, topic, [], True, self.blocklist, caption=caption_for(p, topic))  # texto primeiro: não se gasta voz em propostas vetadas
+        # texto primeiro (guião, prompts, legenda final, tema): não se gasta voz em propostas vetadas
+        text = run_gates(p, topic, [], True, self.blocklist, caption=caption_for(p, topic))
         if not text.passed:
             return self._reject(p, topic, text.reasons, now)
         assets = []
@@ -178,7 +179,7 @@ class Pipeline:
         self.store.record_decision(ev.proposal_id, ev.action, day)  # conta como intervenção (metrics.success)
 
     def _cancel_pending_improvement(self, new_id: str, now: datetime) -> None:
-        """Só há um pedido de «Melhorar» de cada vez: o anterior volta a `gated` e o texto livre seguinte é do novo."""
+        """Um só pedido de «Melhorar» de cada vez: o anterior volta a `gated`; o texto livre seguinte é do novo."""
         previous = self.store.awaiting_feedback()
         if previous and previous != new_id and self.store.set_status_if(previous, ("revising",), "gated", at=now):
             p = self.store.proposal(previous)
