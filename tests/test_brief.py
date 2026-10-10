@@ -132,3 +132,18 @@ def test_selection_taps_on_todays_topics_work_with_now(tmp_path):
     store, topics, http, ch = setup(tmp_path, [cb(1, "t:2026-10-10:2"), cb(2, "t:2026-10-10:4"),
                                                cb(3, "tc:2026-10-10")])
     assert ch.poll(today) == [TopicsChosen(DAY, ("t2", "t4"))]
+
+
+def test_proposal_buttons_carry_the_current_revision(tmp_path):
+    store, topics, http, ch = setup(tmp_path)
+    p = make_proposal()
+    store.save_proposals([p])
+    store.bump_revision(p.id)
+    ch.send_proposal(p, topics[0])
+    data = [b["callback_data"] for b in http.sent("sendMessage")[-1]["reply_markup"]["inline_keyboard"][0]]
+    assert data == [f"p:{p.id}:a:1", f"p:{p.id}:r:1", f"p:{p.id}:i:1"]
+
+
+def test_decision_with_revision_is_parsed_and_old_format_still_works(tmp_path):
+    _, _, _, ch = setup(tmp_path, [cb(1, "p:ab12cd34:a:2"), cb(2, "p:ab12cd34:r")])
+    assert ch.poll() == [ProposalDecision("ab12cd34", "accept", 2), ProposalDecision("ab12cd34", "reject", None)]

@@ -23,6 +23,7 @@ class TopicsChosen:
 class ProposalDecision:
     proposal_id: str
     action: Literal["accept", "reject", "improve"]
+    revision: int | None = None  # versão da proposta na mensagem; None = formato antigo, não se verifica
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,11 @@ class TelegramChannel:
         self._send(render_topics(day, topics), self._topics_keyboard(day, len(topics), []))
 
     def send_proposal(self, p: Proposal, topic: Topic) -> None:
-        row = [{"text": label, "callback_data": f"p:{p.id}:{code}"}
+        try:
+            suffix = f":{self.store.revisions(p.id)}"  # botões de uma versão antiga deixam de valer
+        except KeyError:
+            suffix = ""
+        row = [{"text": label, "callback_data": f"p:{p.id}:{code}{suffix}"}
                for label, code in (("Aceitar", "a"), ("Recusar", "r"), ("Melhorar", "i"))]
         self._send(render_proposal(p, topic), [row])
 
@@ -139,8 +144,11 @@ class TelegramChannel:
 
     def _handle_callback(self, data: str, message_id: int) -> list[Event]:
         kind, *rest = data.split(":")
-        if kind == "p" and len(rest) == 2 and rest[1] in _ACTIONS:
-            return [ProposalDecision(rest[0], _ACTIONS[rest[1]])]  # type: ignore[arg-type]
+        if kind == "p" and len(rest) in (2, 3) and rest[1] in _ACTIONS:
+            if len(rest) == 3 and not rest[2].isdigit():
+                return []
+            revision = int(rest[2]) if len(rest) == 3 else None
+            return [ProposalDecision(rest[0], _ACTIONS[rest[1]], revision)]  # type: ignore[arg-type]
         if kind in ("t", "tc") and self._stale_day(rest[0]):
             return []
         if kind == "t" and len(rest) == 2:

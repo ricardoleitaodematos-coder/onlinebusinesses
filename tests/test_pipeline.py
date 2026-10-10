@@ -351,6 +351,23 @@ def test_improve_on_another_proposal_moves_the_feedback_slot(env):
     assert store.status(y.id) == "gated"
 
 
+def test_accept_on_an_old_version_is_ignored(env):
+    pipe, store, channel, _, _ = env([proposals_json(), revision_json()], events=[choose("t1", "t2")])
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "improve", 0)]
+    pipe.stage_poll(NOW)
+    channel.events = [Feedback(p.id, "mais curto")]
+    pipe.stage_poll(NOW)
+    assert store.status(p.id) == "gated"
+    channel.events = [ProposalDecision(p.id, "accept", 0)]
+    pipe.stage_poll(NOW)
+    assert store.status(p.id) == "gated" and any("versão antiga" in n for n in channel.notes)
+    channel.events = [ProposalDecision(p.id, "accept", 1)]
+    pipe.stage_poll(NOW)
+    assert store.status(p.id) == "approved"
+
+
 def test_fourth_revision_rejects(env):
     pipe, store, channel, _, _ = env([proposals_json()] + [revision_json()] * 4, events=[choose("t1", "t2")])
     pipe.stage_poll(NOW)
@@ -369,9 +386,11 @@ def test_failed_revision_keeps_proposal_and_tells_ricardo(env):
     p = first_proposal(store)
     channel.events = [ProposalDecision(p.id, "improve")]
     pipe.stage_poll(NOW)
+    sent_before = len(channel.proposals_sent)
     channel.events = [Feedback(p.id, "x")]
     pipe.stage_poll(NOW)
     assert store.status(p.id) == "gated" and store.proposal(p.id).script_pt == "Piada A"
+    assert len(channel.proposals_sent) == sent_before + 1  # reenviada com os botões da revisão atual
 
 
 # --- publicação ------------------------------------------------------------------------------------------------------

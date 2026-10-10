@@ -148,3 +148,10 @@ def test_should_notify_at_most_once_per_gap(store):
     assert store.should_notify("publish:p1:instagram:PublishError", t + timedelta(minutes=61))
     assert store.should_notify("k", t, min_gap=timedelta(minutes=5))
     assert store.should_notify("k", t + timedelta(minutes=6), min_gap=timedelta(minutes=5))
+
+
+def test_revisions_starts_at_zero(store):
+    store.save_proposals([make_proposal()])
+    assert store.revisions("ab12cd34") == 0
+    store.bump_revision("ab12cd34")
+    assert store.revisions("ab12cd34") == 1

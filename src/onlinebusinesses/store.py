@@ -127,6 +127,9 @@ class Store:
     def reasons(self, proposal_id: str) -> list[str]:
         return json.loads(self._one("SELECT reasons FROM proposals WHERE id = ?", proposal_id))
 
+    def revisions(self, proposal_id: str) -> int:
+        return self._one("SELECT revisions FROM proposals WHERE id = ?", proposal_id)
+
     def bump_revision(self, proposal_id: str) -> int:
         self._run("UPDATE proposals SET revisions = revisions + 1 WHERE id = ?", (proposal_id,))
         return self._one("SELECT revisions FROM proposals WHERE id = ?", proposal_id)

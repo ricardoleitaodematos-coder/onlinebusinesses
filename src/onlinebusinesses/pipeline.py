@@ -161,6 +161,9 @@ class Pipeline:
     def _on_decision(self, ev: ProposalDecision, now: datetime) -> None:
         day = today_lisbon(now)
         status = self._status(ev.proposal_id)
+        if status is not None and ev.revision is not None and ev.revision != self.store.revisions(ev.proposal_id):
+            self.channel.notify("Essa mensagem é de uma versão antiga da proposta; usa os botões da mais recente.")
+            return
         if ev.action == "accept" and status == "gated":
             self.store.set_status(ev.proposal_id, "approved", at=now)
         elif ev.action == "reject" and status in ("gated", "approved", "revising", "producing"):
@@ -196,8 +199,9 @@ class Pipeline:
         try:
             new = revise_proposal(p, topic, ev.text, self.llm)
         except Exception as e:
-            self.store.set_status_if(p.id, ("revising",), "gated", at=now)
             self.channel.notify(f"Não consegui rever a proposta {p.variant} de «{topic.title}»: {e}")
+            if self.store.set_status_if(p.id, ("revising",), "producing", at=now):
+                self._send_proposal(p, topic, now)  # reenvia com os botões da revisão atual (a antiga deixa de valer)
             return
         self.store.replace_proposal(new)
         self._produce(new, topic, now)  # continua `revising` até as barreiras e o vídeo novo estarem prontos
