@@ -392,6 +392,61 @@ def test_failed_upload_releases_the_reservation(env):
     assert store.claim_publication(p.id, "instagram", NOW)
 
 
+def test_reject_during_upload_stops_other_platforms_and_is_never_overwritten(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers={})
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+    other, _, other_channel, _, _ = env(seed_topics=False, publishers={})
+
+    class RejectedMeanwhile(FakePublisher):
+        def publish(self, *args):
+            other_channel.events = [ProposalDecision(p.id, "reject")]
+            other.stage_poll(NOW)  # o poll trata o «Recusar» enquanto o upload decorre
+            return super().publish(*args)
+
+    tiktok = FakePublisher()
+    pipe.publishers = {"instagram": RejectedMeanwhile(), "tiktok": tiktok}
+    pipe.stage_publish(NOW)
+    assert tiktok.calls == [] and store.status(p.id) == "rejected"
+
+
+def test_reject_during_last_upload_keeps_rejected(env):
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")], publishers={})
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "accept")]
+    pipe.stage_poll(NOW)
+
+    class RejectedMeanwhile(FakePublisher):
+        def publish(self, *args):
+            store.set_status(p.id, "rejected", ["recusada pelo Ricardo"])
+            return super().publish(*args)
+
+    pipe.publishers = {"instagram": RejectedMeanwhile()}
+    pipe.stage_publish(NOW)
+    assert store.status(p.id) == "rejected" and store.publication(p.id, "instagram")
+
+
+def test_revision_stays_revising_until_the_new_video_is_built(env):
+    pipe, store, channel, _, _ = env([proposals_json(), revision_json()], events=[choose("t1", "t2")])
+    pipe.stage_poll(NOW)
+    p = first_proposal(store)
+    channel.events = [ProposalDecision(p.id, "improve")]
+    pipe.stage_poll(NOW)
+    seen = []
+
+    def builder(prop, lang, voice, visuals, llm, workdir):
+        seen.append(store.status(prop.id))
+        return fake_builder(prop, lang, voice, visuals, llm, workdir)
+
+    pipe.builder = builder
+    channel.events = [Feedback(p.id, "mais curto")]
+    pipe.stage_poll(NOW)
+    assert seen == ["revising"] and store.status(p.id) == "gated"
+
+
 def test_proposal_is_published_only_when_every_platform_succeeded(env):
     tiktok = FakePublisher(fail_times=1)
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")],

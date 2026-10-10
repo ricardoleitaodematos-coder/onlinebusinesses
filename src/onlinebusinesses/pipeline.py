@@ -113,7 +113,8 @@ class Pipeline:
         legal = copyright_gate(assets)
         if not legal.passed:
             return self._reject(p, topic, legal.reasons, now)
-        self.store.set_status(p.id, "gated", at=now)
+        if not self.store.set_status_if(p.id, ("draft", "revising"), "gated", at=now):
+            return False  # recusada (ou já tratada) enquanto se produzia
         self.channel.send_proposal(p, topic)
         return True
 
@@ -160,8 +161,7 @@ class Pipeline:
             self.channel.notify(f"Não consegui rever a proposta {p.variant} de «{topic.title}»: {e}")
             return
         self.store.replace_proposal(new)
-        self.store.set_status(p.id, "gated", at=now)
-        self._produce(new, topic, now)
+        self._produce(new, topic, now)  # continua `revising` até as barreiras e o vídeo novo estarem prontos
 
     # --- publicação ---------------------------------------------------------------------------------------------
     def stage_publish(self, now: datetime) -> dict[str, str]:
@@ -177,11 +177,17 @@ class Pipeline:
         published: dict[str, str] = {}
         for p in eligible:
             topic = self.store.topic(p.topic_id)
-            caption = caption_for(p, topic)
             video = self.workdir / f"{p.id}-{PUBLISH_LANGUAGES[0]}.mp4"
             for platform, publisher in self.publishers.items():
-                if self.store.publication(p.id, platform) or not self.store.claim_publication(p.id, platform, now):
-                    continue  # já publicada, ou outra execução está a publicá-la agora
+                if self.store.publication(p.id, platform):
+                    continue
+                if not self.store.claim_publication(p.id, platform, now):
+                    continue  # outra execução está a publicá-la agora
+                if not self._eligible_now(p.id, now, today, needs_accept):
+                    self.store.release_claim(p.id, platform)
+                    break  # recusada, em revisão ou mudou entretanto: relê-se o estado antes de cada upload
+                p = self.store.proposal(p.id)  # texto atual (pode ter sido revisto)
+                caption = caption_for(p, topic)
                 try:
                     external_id = publisher.publish(video, caption, True, p.id)
                 except Exception as e:
@@ -193,18 +199,29 @@ class Pipeline:
                 published[f"{p.id}:{platform}"] = external_id
                 self.channel.notify(self._published_note(platform, p, topic, external_id, caption))
             if self.publishers and all(self.store.publication(p.id, pl) for pl in self.publishers):
-                self.store.set_status(p.id, "published")
+                self.store.set_status_if(p.id, ("approved", "gated"), "published", at=now)
         return published
 
     def _auto_publishable(self, now: datetime, today: date) -> list[Proposal]:
-        hold = timedelta(minutes=self.settings.publish_hold_minutes)
         out = []
         for p in self.store.proposals_by_status("gated"):
             if self.store.topic_day(p.topic_id) < today:
-                self.store.set_status(p.id, "expired", ["tema de um dia anterior: não se publica"], at=now)
-            elif (since := self.store.status_at(p.id)) is not None and now - since >= hold:
+                self.store.set_status_if(p.id, ("gated",), "expired", ["tema de um dia anterior: não se publica"],
+                                         at=now)
+            elif self._eligible_now(p.id, now, today, needs_accept=False):
                 out.append(p)
         return out
+
+    def _eligible_now(self, proposal_id: str, now: datetime, today: date, needs_accept: bool) -> bool:
+        status = self._status(proposal_id)
+        if status == "approved":
+            return True
+        if status != "gated" or needs_accept:
+            return False
+        since = self.store.status_at(proposal_id)
+        hold = timedelta(minutes=self.settings.publish_hold_minutes)
+        topic_id = self.store.proposal(proposal_id).topic_id
+        return self.store.topic_day(topic_id) == today and since is not None and now - since >= hold
 
     @staticmethod
     def _published_note(platform: str, p: Proposal, topic: Topic, external_id: str, caption: str) -> str:

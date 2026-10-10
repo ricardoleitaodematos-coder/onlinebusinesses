@@ -128,3 +128,13 @@ def test_claim_publication_is_exclusive_until_released_or_stale(store):
     store.record_publication("p1", "instagram", "ig-1")
     store.release_claim("p1", "instagram")
     assert not store.claim_publication("p1", "instagram", t + timedelta(hours=5))  # já publicada
+
+
+def test_set_status_if_only_changes_expected_states(store):
+    store.save_proposals([make_proposal()])
+    store.set_status("ab12cd34", "rejected", ["recusada"])
+    assert not store.set_status_if("ab12cd34", ("approved", "gated"), "published")
+    assert store.status("ab12cd34") == "rejected" and store.reasons("ab12cd34") == ["recusada"]
+    store.set_status("ab12cd34", "approved")
+    assert store.set_status_if("ab12cd34", ("approved", "gated"), "published")
+    assert store.status("ab12cd34") == "published"

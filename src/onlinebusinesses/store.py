@@ -108,6 +108,14 @@ class Store:
         self._run("UPDATE proposals SET status = ?, reasons = ?, status_at = ? WHERE id = ?",
                   (status, json.dumps(list(reasons)), _ts(at or datetime.now(timezone.utc)), proposal_id))
 
+    def set_status_if(self, proposal_id: str, expected: Sequence[Status], new: Status, reasons: Sequence[str] = (),
+                      at: datetime | None = None) -> bool:
+        """Compare-and-set: só muda se o estado atual for um dos esperados (nunca sobrescreve uma recusa)."""
+        marks = ", ".join("?" * len(expected))
+        return bool(self._exec(
+            f"UPDATE proposals SET status = ?, reasons = ?, status_at = ? WHERE id = ? AND status IN ({marks})",
+            (new, json.dumps(list(reasons)), _ts(at or datetime.now(timezone.utc)), proposal_id, *expected)))
+
     def status_at(self, proposal_id: str) -> datetime | None:
         v = self._one("SELECT status_at FROM proposals WHERE id = ?", proposal_id)
         return datetime.fromisoformat(v) if v else None
