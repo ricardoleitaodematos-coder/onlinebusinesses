@@ -12,6 +12,7 @@ from onlinebusinesses.store import Store
 
 DAY = date(2026, 10, 10)
 WEEK2 = NOW + timedelta(days=8)
+LATER = NOW + timedelta(hours=3)  # depois da janela de revisão (publish_hold_minutes = 120)
 SRC = (make_source("a.pt", 1, sid="s1"), make_source("b.com", 2, sid="s2"))
 BLOCK = {"pt": ["morreu"]}
 
@@ -225,15 +226,20 @@ def test_accept_then_publish(env):
     assert video.name == f"{p.id}-pt-PT.mp4" and ai_label is True and key == p.id and "IA" in caption
 
 
+def past_acceptance(store):
+    """A primeira publicação foi há 8 dias: o período de aceitação obrigatória já acabou."""
+    store.record_publication("antiga", "instagram", "ig-0", DAY - timedelta(days=8))
+
+
 def test_reject_never_publishes(env):
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")])
-    store.set_first_day(DAY)
+    past_acceptance(store)
     pipe.stage_poll(NOW)
     p = first_proposal(store)
     channel.events = [ProposalDecision(p.id, "reject")]
     pipe.stage_poll(NOW)
     assert store.status(p.id) == "rejected"
-    assert len(pipe.stage_publish(WEEK2)) == 3  # as outras três propostas saem; a recusada não
+    assert len(pipe.stage_publish(LATER)) == 3  # as outras três propostas saem; a recusada não
     assert all(c[3] != p.id for c in pubs["instagram"].calls)
 
 
@@ -278,18 +284,56 @@ def test_failed_revision_keeps_proposal_and_tells_ricardo(env):
 
 def test_first_week_requires_accept_and_week_two_publishes_gated(env):
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")])
-    store.set_first_day(DAY)
+    store.record_publication("antiga", "instagram", "ig-0", DAY)  # 1.ª publicação hoje: começa o período
     pipe.stage_poll(NOW)
-    assert pipe.stage_publish(NOW) == {}
-    assert len(pipe.stage_publish(WEEK2)) == 4
+    assert pipe.stage_publish(LATER) == {}
+    later_day = DAY + timedelta(days=8)
+    store.save_topics(later_day, [make_topic("u1", SRC), make_topic("u2", SRC)])
+    channel.events = [TopicsChosen(later_day, ("u1", "u2"))]
+    pipe.stage_poll(WEEK2)
+    out = pipe.stage_publish(WEEK2 + timedelta(hours=3))
+    assert len(out) == 4 and {pid.split(":")[0] for pid in out} == {p.id for t in ("u1", "u2")
+                                                                    for p in store.proposals_for(t)}
 
 
 def test_publish_twice_does_not_duplicate(env):
     pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")])
-    store.set_first_day(DAY)
+    past_acceptance(store)
     pipe.stage_poll(NOW)
-    pipe.stage_publish(WEEK2)
-    assert pipe.stage_publish(WEEK2) == {} and len(pubs["instagram"].calls) == 4
+    pipe.stage_publish(LATER)
+    assert pipe.stage_publish(LATER) == {} and len(pubs["instagram"].calls) == 4
+
+
+def test_acceptance_clock_starts_at_first_publication_not_first_research(env):
+    pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")])
+    store.set_first_day(DAY - timedelta(days=30))  # pesquisa há um mês, mas nunca se publicou nada
+    pipe.stage_poll(NOW)
+    assert pipe.stage_publish(LATER) == {} and pubs["instagram"].calls == []
+
+
+def test_ignored_backlog_is_expired_not_published_in_bulk(env):
+    pipe, store, channel, _, pubs = env(seed_topics=False)
+    store.set_first_day(DAY - timedelta(days=9))
+    past_acceptance(store)
+    old = []
+    for i in range(1, 8):  # 7 dias de propostas que passaram nas barreiras e o Ricardo ignorou
+        topic = make_topic(f"old{i}", SRC)
+        store.save_topics(DAY - timedelta(days=i), [topic])
+        p = make_proposal(f"old{i:05d}", topic=topic)
+        store.save_proposals([p])
+        store.set_status(p.id, "gated", at=NOW - timedelta(days=i))
+        old.append(p.id)
+    assert pipe.stage_publish(NOW) == {} and pubs["instagram"].calls == []
+    assert {store.status(pid) for pid in old} == {"expired"}
+    assert pipe.stage_publish(LATER) == {}
+
+
+def test_gated_waits_for_the_review_window_before_auto_publishing(env):
+    pipe, store, channel, _, pubs = env(events=[choose("t1", "t2")])
+    past_acceptance(store)
+    pipe.stage_poll(NOW)
+    assert pipe.stage_publish(NOW + timedelta(minutes=119)) == {}
+    assert len(pipe.stage_publish(NOW + timedelta(minutes=121))) == 4
 
 
 def test_same_decision_event_twice_does_not_duplicate(env):

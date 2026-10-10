@@ -12,11 +12,11 @@ python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
 pytest
 python -m onlinebusinesses research   # pesquisa e envia os 5 temas
 python -m onlinebusinesses poll       # processa cliques e mensagens do Telegram
-python -m onlinebusinesses publish    # publica o que está aprovado (ou passou as barreiras, depois de 7 dias)
+python -m onlinebusinesses publish    # publica o aprovado; 7 dias após a 1.ª publicação, também o de hoje que passou as barreiras há 2 h
 python -m onlinebusinesses report     # métricas, A vs B e critério de sucesso (a partir da 2.ª semana)
 ```
 Variáveis: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `LLM_MODEL`, `ANTHROPIC_API_KEY`, opcionais `TIKTOK_ACCESS_TOKEN`,
-`DB_PATH`, `OUT_DIR`. Nada de segredos no repositório.
+`DB_PATH`, `OUT_DIR`, `PUBLISH_HOLD_MINUTES` (janela de revisão, 120). Nada de segredos no repositório.
 
 ## Agendamento (crontab, hora de Lisboa)
 ```

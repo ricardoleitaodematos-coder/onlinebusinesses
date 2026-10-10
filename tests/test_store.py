@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from builders import make_proposal, make_topic
@@ -93,3 +93,25 @@ def test_lookup_helpers(store):
     assert [p.id for p in store.proposals_by_status("draft")] == ["bbbbbbbb"]
     with pytest.raises(KeyError):
         store.proposal("nope")
+
+
+def test_first_publication_day_is_the_earliest_dated_publication(store):
+    assert store.first_publication_day() is None
+    store.record_publication("p1", "instagram", "x")  # sem dia: não conta
+    assert store.first_publication_day() is None
+    store.record_publication("p2", "instagram", "y", date(2026, 10, 12))
+    store.record_publication("p3", "instagram", "z", date(2026, 10, 15))
+    assert store.first_publication_day() == date(2026, 10, 12)
+
+
+def test_topic_day_and_status_at(store):
+    store.save_topics(DAY, [make_topic("t1")])
+    assert store.topic_day("t1") == DAY
+    with pytest.raises(KeyError):
+        store.topic_day("nope")
+    store.save_proposals([make_proposal()])
+    at = datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc)
+    store.set_status("ab12cd34", "gated", at=at)
+    assert store.status_at("ab12cd34") == at
+    store.set_status("ab12cd34", "expired", at=at + timedelta(hours=1))
+    assert store.status("ab12cd34") == "expired" and store.status_at("ab12cd34") == at + timedelta(hours=1)

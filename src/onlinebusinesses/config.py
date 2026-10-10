@@ -16,6 +16,7 @@ class Settings:
     out_dir: Path
     tz: str
     require_accept_days: int
+    publish_hold_minutes: int
     revision_limit: int
     topics_per_day: int
     picks_per_day: int
@@ -38,6 +39,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         out_dir=Path(env.get("OUT_DIR", "out")),
         tz=env.get("TZ_NAME", "Europe/Lisbon"),
         require_accept_days=int(env.get("REQUIRE_ACCEPT_DAYS", "7")),
+        publish_hold_minutes=int(env.get("PUBLISH_HOLD_MINUTES", "120")),
         revision_limit=int(env.get("REVISION_LIMIT", "3")),
         topics_per_day=int(env.get("TOPICS_PER_DAY", "5")),
         picks_per_day=int(env.get("PICKS_PER_DAY", "2")),

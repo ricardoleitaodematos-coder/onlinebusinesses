@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal, Sequence
 
 from .models import Insights, Proposal, Topic
 
-Status = Literal["draft", "gated", "approved", "rejected", "revising", "published"]
+Status = Literal["draft", "gated", "approved", "rejected", "revising", "published", "expired"]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS topics (day TEXT, id TEXT, json TEXT, PRIMARY KEY (day, id));
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS choices (day TEXT PRIMARY KEY, ids TEXT);
 CREATE TABLE IF NOT EXISTS proposals (
   id TEXT PRIMARY KEY, topic_id TEXT, variant TEXT, json TEXT,
   status TEXT NOT NULL DEFAULT 'draft', reasons TEXT NOT NULL DEFAULT '[]',
-  revisions INTEGER NOT NULL DEFAULT 0);
+  revisions INTEGER NOT NULL DEFAULT 0, status_at TEXT);
 CREATE TABLE IF NOT EXISTS publications (
   proposal_id TEXT, platform TEXT, external_id TEXT, published_on TEXT, PRIMARY KEY (proposal_id, platform));
 CREATE TABLE IF NOT EXISTS decisions (proposal_id TEXT, action TEXT, day TEXT);
@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS insights (
   proposal_id TEXT, platform TEXT, json TEXT, PRIMARY KEY (proposal_id, platform));
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
+
+
+def _ts(at: datetime) -> str:
+    """UTC, largura fixa: as comparações de texto no SQLite ficam corretas."""
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
 
 class Store:
@@ -75,6 +80,9 @@ class Store:
             raise KeyError(topic_id)
         return Topic.from_json(rows[0]["json"])
 
+    def topic_day(self, topic_id: str) -> date:
+        return date.fromisoformat(self._one("SELECT MAX(day) FROM topics WHERE id = ? HAVING COUNT(*) > 0", topic_id))
+
     def proposal(self, proposal_id: str) -> Proposal:
         return Proposal.from_json(self._one("SELECT json FROM proposals WHERE id = ?", proposal_id))
 
@@ -89,9 +97,14 @@ class Store:
     def replace_proposal(self, p: Proposal) -> None:
         self._run("UPDATE proposals SET json = ? WHERE id = ?", (p.to_json(), p.id))
 
-    def set_status(self, proposal_id: str, status: Status, reasons: Sequence[str] = ()) -> None:
-        self._run("UPDATE proposals SET status = ?, reasons = ? WHERE id = ?",
-                  (status, json.dumps(list(reasons)), proposal_id))
+    def set_status(self, proposal_id: str, status: Status, reasons: Sequence[str] = (),
+                   at: datetime | None = None) -> None:
+        self._run("UPDATE proposals SET status = ?, reasons = ?, status_at = ? WHERE id = ?",
+                  (status, json.dumps(list(reasons)), _ts(at or datetime.now(timezone.utc)), proposal_id))
+
+    def status_at(self, proposal_id: str) -> datetime | None:
+        v = self._one("SELECT status_at FROM proposals WHERE id = ?", proposal_id)
+        return datetime.fromisoformat(v) if v else None
 
     def status(self, proposal_id: str) -> Status:
         return self._one("SELECT status FROM proposals WHERE id = ?", proposal_id)
@@ -113,6 +126,11 @@ class Store:
     def record_publication(self, proposal_id: str, platform: str, external_id: str, day: date | None = None) -> None:
         self._run("INSERT OR IGNORE INTO publications VALUES (?, ?, ?, ?)",
                   (proposal_id, platform, external_id, day.isoformat() if day else None))
+
+    def first_publication_day(self) -> date | None:
+        """Dia da primeira publicação: começa aqui o período de aceitação obrigatória."""
+        v = self._run("SELECT MIN(published_on) FROM publications WHERE published_on IS NOT NULL")[0][0]
+        return date.fromisoformat(v) if v else None
 
     def all_publications(self) -> list[tuple[str, str, str]]:
         return [(r[0], r[1], r[2]) for r in self._run("SELECT proposal_id, platform, external_id FROM publications")]

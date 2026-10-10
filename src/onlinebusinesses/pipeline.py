@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -72,13 +72,13 @@ class Pipeline:
     def stage_poll(self, now: datetime) -> None:
         for event in self.channel.poll():
             if isinstance(event, TopicsChosen):
-                self._on_choice(event)
+                self._on_choice(event, now)
             elif isinstance(event, ProposalDecision):
-                self._on_decision(event, today_lisbon(now))
+                self._on_decision(event, now)
             elif isinstance(event, Feedback):
-                self._on_feedback(event, today_lisbon(now))
+                self._on_feedback(event, now)
 
-    def _on_choice(self, ev: TopicsChosen) -> None:
+    def _on_choice(self, ev: TopicsChosen, now: datetime) -> None:
         if self.store.choice(ev.day):
             return
         known = {t.id for t in self.store.topics(ev.day)}
@@ -88,9 +88,9 @@ class Pipeline:
             return
         self.store.save_choice(ev.day, ids)
         for topic_id in ids:
-            self._generate(self.store.topic(topic_id))
+            self._generate(self.store.topic(topic_id), now)
 
-    def _generate(self, topic: Topic) -> None:
+    def _generate(self, topic: Topic, now: datetime) -> None:
         try:
             pair = generate_proposals(topic, self.llm)
         except Exception as e:
@@ -98,27 +98,27 @@ class Pipeline:
             return
         self.store.save_proposals(pair)
         for p in pair:
-            self._produce(p, topic)
+            self._produce(p, topic, now)
 
-    def _produce(self, p: Proposal, topic: Topic) -> bool:
+    def _produce(self, p: Proposal, topic: Topic, now: datetime) -> bool:
         text = run_gates(p, topic, [], True, self.blocklist, caption=caption_for(p, topic))  # texto primeiro: não se gasta voz em propostas vetadas
         if not text.passed:
-            return self._reject(p, topic, text.reasons)
+            return self._reject(p, topic, text.reasons, now)
         assets = []
         try:
             for lang in PUBLISH_LANGUAGES:
                 assets += self.builder(p, lang, self.voice, self.visuals, self.llm, self.workdir)[1]
         except Exception as e:
-            return self._reject(p, topic, [f"falha na produção do vídeo: {e}"])
+            return self._reject(p, topic, [f"falha na produção do vídeo: {e}"], now)
         legal = copyright_gate(assets)
         if not legal.passed:
-            return self._reject(p, topic, legal.reasons)
-        self.store.set_status(p.id, "gated")
+            return self._reject(p, topic, legal.reasons, now)
+        self.store.set_status(p.id, "gated", at=now)
         self.channel.send_proposal(p, topic)
         return True
 
-    def _reject(self, p: Proposal, topic: Topic, reasons: Sequence[str]) -> bool:
-        self.store.set_status(p.id, "rejected", reasons)
+    def _reject(self, p: Proposal, topic: Topic, reasons: Sequence[str], now: datetime) -> bool:
+        self.store.set_status(p.id, "rejected", reasons, at=now)
         self.channel.notify(f"Proposta {p.variant} de «{topic.title}» rejeitada: {'; '.join(reasons)}")
         return False
 
@@ -128,25 +128,27 @@ class Pipeline:
         except KeyError:
             return None
 
-    def _on_decision(self, ev: ProposalDecision, day: date) -> None:
+    def _on_decision(self, ev: ProposalDecision, now: datetime) -> None:
+        day = today_lisbon(now)
         status = self._status(ev.proposal_id)
         if ev.action == "accept" and status == "gated":
-            self.store.set_status(ev.proposal_id, "approved")
+            self.store.set_status(ev.proposal_id, "approved", at=now)
         elif ev.action == "reject" and status in ("gated", "approved", "revising"):
-            self.store.set_status(ev.proposal_id, "rejected", ["recusada pelo Ricardo"])
+            self.store.set_status(ev.proposal_id, "rejected", ["recusada pelo Ricardo"], at=now)
         elif ev.action == "improve" and status in ("gated", "approved"):
-            self.store.set_status(ev.proposal_id, "revising")
+            self.store.set_status(ev.proposal_id, "revising", at=now)
             self.channel.ask_feedback(ev.proposal_id)
         else:
             return
         self.store.record_decision(ev.proposal_id, ev.action, day)  # conta como intervenção (metrics.success)
 
-    def _on_feedback(self, ev: Feedback, day: date) -> None:
+    def _on_feedback(self, ev: Feedback, now: datetime) -> None:
+        day = today_lisbon(now)
         if self._status(ev.proposal_id) != "revising":
             return
         self.store.record_decision(ev.proposal_id, "feedback", day)
         if self.store.bump_revision(ev.proposal_id) > self.settings.revision_limit:
-            self.store.set_status(ev.proposal_id, "rejected", ["limite de revisões atingido"])
+            self.store.set_status(ev.proposal_id, "rejected", ["limite de revisões atingido"], at=now)
             self.channel.notify("Atingi o limite de revisões desta proposta; ficou rejeitada.")
             return
         p = self.store.proposal(ev.proposal_id)
@@ -154,20 +156,24 @@ class Pipeline:
         try:
             new = revise_proposal(p, topic, ev.text, self.llm)
         except Exception as e:
-            self.store.set_status(p.id, "gated")
+            self.store.set_status(p.id, "gated", at=now)
             self.channel.notify(f"Não consegui rever a proposta {p.variant} de «{topic.title}»: {e}")
             return
         self.store.replace_proposal(new)
-        self.store.set_status(p.id, "gated")
-        self._produce(new, topic)
+        self.store.set_status(p.id, "gated", at=now)
+        self._produce(new, topic, now)
 
     # --- publicação ---------------------------------------------------------------------------------------------
     def stage_publish(self, now: datetime) -> dict[str, str]:
-        first = self.store.first_day()
-        needs_accept = first is None or (today_lisbon(now) - first).days < self.settings.require_accept_days
+        """Aprovadas saem sempre. O período de aceitação obrigatória conta desde a 1.ª publicação; fora dele
+        saem também as `gated` cujo tema é de hoje e que estão `gated` há `publish_hold_minutes` (janela de revisão).
+        As `gated` de dias anteriores expiram: nada se publica em massa."""
+        today = today_lisbon(now)
+        first_pub = self.store.first_publication_day()
+        needs_accept = first_pub is None or (today - first_pub).days < self.settings.require_accept_days
         eligible = self.store.proposals_by_status("approved")
         if not needs_accept:
-            eligible += self.store.proposals_by_status("gated")
+            eligible += self._auto_publishable(now, today)
         published: dict[str, str] = {}
         for p in eligible:
             topic = self.store.topic(p.topic_id)
@@ -188,6 +194,16 @@ class Pipeline:
             if self.publishers and all(self.store.publication(p.id, pl) for pl in self.publishers):
                 self.store.set_status(p.id, "published")
         return published
+
+    def _auto_publishable(self, now: datetime, today: date) -> list[Proposal]:
+        hold = timedelta(minutes=self.settings.publish_hold_minutes)
+        out = []
+        for p in self.store.proposals_by_status("gated"):
+            if self.store.topic_day(p.topic_id) < today:
+                self.store.set_status(p.id, "expired", ["tema de um dia anterior: não se publica"], at=now)
+            elif (since := self.store.status_at(p.id)) is not None and now - since >= hold:
+                out.append(p)
+        return out
 
     @staticmethod
     def _published_note(platform: str, p: Proposal, topic: Topic, external_id: str, caption: str) -> str:

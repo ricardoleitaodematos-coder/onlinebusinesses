@@ -81,7 +81,8 @@ def report_pipeline(tmp_path):
 
     store = Store(tmp_path / "t.sqlite")
     store.init()
-    store.set_first_day(date(2026, 10, 10))
+    store.set_first_day(date(2026, 9, 1))  # a pesquisa começou antes; conta a 1.ª publicação
+    store.record_publication("p0", "instagram", "ig-0", date(2026, 10, 10))
     return SimpleNamespace(store=store, publishers={}, settings=load_settings({}))
 
 

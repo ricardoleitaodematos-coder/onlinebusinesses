@@ -15,6 +15,7 @@ def test_load_settings_defaults():
     assert (s.require_accept_days, s.revision_limit) == (7, 3)
     assert s.tz == "Europe/Lisbon"
     assert s.telegram_chat_id is None
+    assert s.publish_hold_minutes == 120
 
 
 def test_load_settings_reads_env():

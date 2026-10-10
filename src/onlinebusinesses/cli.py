@@ -87,7 +87,7 @@ def _run(command: str, report_start: date | None, env: Mapping[str, str],
     pipeline = factory(env)
     if command == "report":
         collect_insights(pipeline.store, pipeline.publishers)
-        first = pipeline.store.first_day()
+        first = pipeline.store.first_publication_day()
         start = report_start or (first + timedelta(days=pipeline.settings.require_accept_days) if first
                                  else today_lisbon(now()))
         print(weekly_report(pipeline.store, start))
