@@ -322,6 +322,35 @@ def test_improve_asks_feedback_then_revises_and_resends(env):
     assert len(channel.proposals_sent) == sent_before + 1
 
 
+def tg_callback(update_id, data, chat=111):
+    return {"update_id": update_id, "callback_query": {"id": f"cq{update_id}", "data": data,
+            "message": {"message_id": 1, "chat": {"id": chat}}}}
+
+
+def tg_message(update_id, text, chat=111):
+    return {"update_id": update_id, "message": {"message_id": update_id, "text": text, "chat": {"id": chat}}}
+
+
+def test_improve_on_another_proposal_moves_the_feedback_slot(env):
+    from fakes import FakeHttp
+    from onlinebusinesses.brief import TelegramChannel
+
+    pipe, store, channel, _, _ = env([proposals_json(), proposals_json(), revision_json()],
+                                     events=[choose("t1", "t2")])
+    pipe.stage_poll(NOW)
+    x, y = store.proposals_for("t1")
+    http = FakeHttp([tg_callback(1, f"p:{x.id}:i"), tg_callback(2, f"p:{y.id}:i")])
+    pipe.channel = TelegramChannel(http, "TOKEN", 111, store)
+    pipe.stage_poll(NOW)
+    assert store.status(x.id) == "gated" and store.status(y.id) == "revising"
+    assert store.awaiting_feedback() == y.id
+    assert any("cancel" in m["text"].lower() for m in http.sent("sendMessage"))
+    http.updates = [tg_message(3, "mais curto")]
+    pipe.stage_poll(NOW)
+    assert store.proposal(y.id).script_pt == "Piada revista" and store.proposal(x.id).script_pt == "Piada A"
+    assert store.status(y.id) == "gated"
+
+
 def test_fourth_revision_rejects(env):
     pipe, store, channel, _, _ = env([proposals_json()] + [revision_json()] * 4, events=[choose("t1", "t2")])
     pipe.stage_poll(NOW)

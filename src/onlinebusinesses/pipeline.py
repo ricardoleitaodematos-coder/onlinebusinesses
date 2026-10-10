@@ -166,11 +166,21 @@ class Pipeline:
         elif ev.action == "reject" and status in ("gated", "approved", "revising", "producing"):
             self.store.set_status(ev.proposal_id, "rejected", ["recusada pelo Ricardo"], at=now)
         elif ev.action == "improve" and status in ("gated", "approved"):
+            self._cancel_pending_improvement(ev.proposal_id, now)
             self.store.set_status(ev.proposal_id, "revising", at=now)
+            self.store.set_awaiting_feedback(ev.proposal_id)
             self.channel.ask_feedback(ev.proposal_id)
         else:
             return
         self.store.record_decision(ev.proposal_id, ev.action, day)  # conta como intervenção (metrics.success)
+
+    def _cancel_pending_improvement(self, new_id: str, now: datetime) -> None:
+        """Só há um pedido de «Melhorar» de cada vez: o anterior volta a `gated` e o texto livre seguinte é do novo."""
+        previous = self.store.awaiting_feedback()
+        if previous and previous != new_id and self.store.set_status_if(previous, ("revising",), "gated", at=now):
+            p = self.store.proposal(previous)
+            self._safe_notify(f"Cancelei o pedido de melhoria da proposta {p.variant} de "
+                              f"«{self.store.topic(p.topic_id).title}»; a mensagem seguinte vale para a nova.")
 
     def _on_feedback(self, ev: Feedback, now: datetime) -> None:
         day = today_lisbon(now)
