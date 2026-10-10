@@ -41,10 +41,17 @@ def fact_gate(p: Proposal, topic: Topic) -> GateResult:
     return _result(reasons)
 
 
-def sensitivity_gate(p: Proposal, blocklist: Mapping[str, Sequence[str]]) -> GateResult:
-    words = _words(" ".join((p.script_pt, *p.visual_prompts)))
+def blocked_words(texts: Sequence[str], blocklist: Mapping[str, Sequence[str]]) -> list[str]:
+    """Palavras vetadas presentes em qualquer dos textos (palavra inteira, sem maiúsculas nem acentos)."""
     blocked = {w for terms in blocklist.values() for w in map(_words_one, terms)} - {""}
-    reasons = [f"palavra vetada: {w}" for w in sorted(words & blocked)]
+    return sorted(_words(" ".join(texts)) & blocked)
+
+
+def sensitivity_gate(p: Proposal, blocklist: Mapping[str, Sequence[str]],
+                     extra_texts: Sequence[str] = ()) -> GateResult:
+    """Guião, prompts visuais e textos extra (legenda final, título e resumo do tema)."""
+    reasons = [f"palavra vetada: {w}" for w in blocked_words((p.script_pt, *p.visual_prompts, *extra_texts),
+                                                              blocklist)]
     prompt_words = _words(" ".join(p.visual_prompts))
     reasons += [f"visual realista não permitido: {w}" for w in sorted(prompt_words & _REALISTIC)]
     return _result(reasons)
@@ -72,7 +79,8 @@ def label_gate(p: Proposal, ai_label_set: bool) -> GateResult:
 
 
 def run_gates(p: Proposal, topic: Topic, assets: Sequence[Asset], ai_label_set: bool,
-              blocklist: Mapping[str, Sequence[str]]) -> GateResult:
-    reasons = (*fact_gate(p, topic).reasons, *sensitivity_gate(p, blocklist).reasons,
+              blocklist: Mapping[str, Sequence[str]], caption: str = "") -> GateResult:
+    sensitive = sensitivity_gate(p, blocklist, (topic.title, topic.summary, caption))
+    reasons = (*fact_gate(p, topic).reasons, *sensitive.reasons,
                *copyright_gate(assets).reasons, *label_gate(p, ai_label_set).reasons)
     return _result(reasons)

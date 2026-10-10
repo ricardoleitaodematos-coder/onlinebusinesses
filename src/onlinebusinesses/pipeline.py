@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .brief import Channel, Feedback, ProposalDecision, TopicsChosen
 from .config import Settings, load_feeds, today_lisbon
-from .gates import copyright_gate, run_gates
+from .gates import blocked_words, copyright_gate, run_gates
 from .llm import LLMClient
 from .media import Visuals, Voice, build_video
 from .models import Proposal, Topic
@@ -21,9 +22,15 @@ from .store import Store
 PUBLISH_LANGUAGES = ("pt-PT",)
 
 
+def _hook(script: str) -> str:
+    """Primeira frase do guião: é o gancho da legenda (nunca o título cru da notícia)."""
+    text = " ".join(script.split())
+    return re.split(r"(?<=[.!?…])\s+", text, maxsplit=1)[0]
+
+
 def caption_for(p: Proposal, topic: Topic) -> str:
     domains = ", ".join(sorted({s.domain for s in topic.sources if s.tier <= 2}))
-    return f"{topic.title}\n\nConteúdo satírico gerado com IA. Fontes: {domains}"
+    return f"{_hook(p.script_pt)}\n\nConteúdo satírico gerado com IA. Fontes: {domains}"
 
 
 class Pipeline:
@@ -43,15 +50,23 @@ class Pipeline:
         if existing := self.store.topics(day):
             return existing
         items = fetch_items(load_feeds(self.settings.feeds_path), self.tiers, self.http, now, aliases=self.aliases)
-        topics = [corroborate(t, self.search, self.tiers, now, aliases=self.aliases) for t in cluster_topics(items, salt=day.isoformat())]
-        top = rank_topics(topics, self.settings.topics_per_day)
-        top = classify_topics([add_context(t, self.http) for t in top], self.llm)
+        topics = [corroborate(t, self.search, self.tiers, now, aliases=self.aliases)
+                  for t in cluster_topics(items, salt=day.isoformat())]
+        safe = [t for t in topics if not self._sensitive(t)]
+        top = [add_context(t, self.http) for t in rank_topics(safe, self.settings.topics_per_day)]
+        clean = [t for t in top if not self._sensitive(t)]
+        if discarded := len(topics) - len(safe) + len(top) - len(clean):
+            self.channel.notify(f"Descartei {discarded} tema(s) com palavras vetadas (mortes, tragédias, menores…).")
+        top = classify_topics(clean, self.llm)
         if not top:
             self.channel.notify("Hoje não encontrei temas com duas fontes fiáveis independentes.")
             return []
         self.store.save_topics(day, top)
         self.channel.send_topics(day, top)
         return top
+
+    def _sensitive(self, topic: Topic) -> bool:
+        return bool(blocked_words((topic.title, topic.summary, topic.context), self.blocklist))
 
     # --- escolha, geração e decisões ---------------------------------------------------------------------------
     def stage_poll(self, now: datetime) -> None:
@@ -86,7 +101,7 @@ class Pipeline:
             self._produce(p, topic)
 
     def _produce(self, p: Proposal, topic: Topic) -> bool:
-        text = run_gates(p, topic, [], True, self.blocklist)  # texto primeiro: não se gasta voz em propostas vetadas
+        text = run_gates(p, topic, [], True, self.blocklist, caption=caption_for(p, topic))  # texto primeiro: não se gasta voz em propostas vetadas
         if not text.passed:
             return self._reject(p, topic, text.reasons)
         assets = []

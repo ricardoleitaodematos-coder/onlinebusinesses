@@ -124,6 +124,30 @@ def test_same_articles_on_two_days_get_new_topic_and_proposal_ids(tmp_path, env)
     assert store.status(old.id) == "rejected"
 
 
+def test_research_discards_topics_with_blocked_words(tmp_path, env):
+    pipe, store, channel, _, _ = env(seed_topics=False)
+    feeds = {"https://a.pt/rss": rss([("Governo aprova nova lei da habitação", "https://a.pt/n/1", NOW),
+                                      ("Ataque faz 20 mortos em Lisboa", "https://a.pt/n/2", NOW)]),
+             "https://b.com/rss": rss([("Nova lei da habitação aprovada pelo Governo", "https://b.com/n/1", NOW),
+                                       ("Em Lisboa ataque faz 20 mortos", "https://b.com/n/2", NOW)])}
+    research_ready(tmp_path, pipe, feeds)
+    pipe.blocklist = {"pt": ["ataque", "mortos"]}
+    topics = pipe.stage_research(NOW)
+    assert [t.title for t in topics] == ["Governo aprova nova lei da habitação"]
+    assert [t.title for t in channel.topics_sent[0][1]] == ["Governo aprova nova lei da habitação"]
+    assert any("1" in n and "descart" in n.lower() for n in channel.notes)
+
+
+def test_caption_with_blocked_word_rejects_proposal(env, monkeypatch):
+    import onlinebusinesses.pipeline as pipeline_module
+
+    pipe, store, channel, _, _ = env(events=[choose("t1", "t2")])
+    monkeypatch.setattr(pipeline_module, "caption_for", lambda p, t: "Ele morreu.\n\nConteúdo satírico gerado com IA.")
+    pipe.stage_poll(NOW)
+    assert channel.proposals_sent == []
+    assert all(store.status(p.id) == "rejected" for p in store.proposals_for("t1"))
+
+
 # --- escolha e geração ------------------------------------------------------------------------------------------
 
 def test_no_choice_generates_and_publishes_nothing(env):
@@ -306,10 +330,12 @@ def test_proposal_is_published_only_when_every_platform_succeeded(env):
     assert store.status(p.id) == "published" and len(pubs["instagram"].calls) == 1
 
 
-def test_caption_mentions_ai_and_topic():
-    t, p = make_topic(), make_proposal()
+def test_caption_uses_the_script_hook_not_the_raw_headline():
+    t = make_topic()
+    p = make_proposal(topic=t, script="O Governo descobriu a roda. Depois inventou o IVA da roda.")
     c = caption_for(p, t)
-    assert "IA" in c and t.title in c
+    assert c.startswith("O Governo descobriu a roda.\n\nConteúdo satírico gerado com IA. Fontes: ")
+    assert t.title not in c and "inventou" not in c and "a.pt" in c
 
 
 def test_decisions_and_publication_day_are_recorded_for_metrics(env):

@@ -93,3 +93,11 @@ def test_shipped_blocklist_covers_three_languages():
     assert set(bl) == {"pt", "es", "en"}
     assert not sensitivity_gate(make_proposal(script="Houve um atentado."), bl).passed
     assert sensitivity_gate(make_proposal(script="O governo aprovou um orçamento."), bl).passed
+
+
+def test_run_gates_checks_caption_and_topic_title():
+    p = make_proposal(topic=TOPIC)
+    assert not run_gates(p, TOPIC, CLEAN, True, BLOCK, caption="Ele morreu.\n\nFontes: a.pt").passed
+    sad = make_topic("t1", TOPIC.sources)
+    sad = type(sad)(**{**sad.__dict__, "title": "Ministro morreu", "summary": "resumo"})
+    assert "palavra vetada: morreu" in run_gates(p, sad, CLEAN, True, BLOCK).reasons
