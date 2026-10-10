@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .brief import Channel, Feedback, ProposalDecision, TopicsChosen, stale_choice_text
 from .config import Settings, load_feeds, today_lisbon
-from .gates import blocked_words, copyright_gate, run_gates
+from .gates import blocked_words, copyright_gate, run_gates, sensitivity_gate
 from .llm import LLMClient
 from .media import Visuals, Voice, build_video
 from .models import Proposal, Topic
@@ -16,10 +17,12 @@ from .publishers.base import Publisher
 from .research import (HttpGet, SearchProvider, add_context, classify_topics, cluster_topics, corroborate,
                        fetch_items, rank_topics)
 from .store import Store
+from .subtitles import languages_for, localize
 
-# Fase 0: só se produz e publica o vídeo pt-PT. PT-BR e ES (build_video já os suporta) ficam à espera da decisão
-# do Ricardo sobre as contas por língua (spec, decisões em aberto).
-PUBLISH_LANGUAGES = ("pt-PT",)
+PT = "pt-PT"
+# Línguas com legenda e aviso de IA conhecidos. PT-BR está adiado (decisão do Ricardo, 2026-10-10): não se produz.
+_CAPTION_TEXTS = {PT: ("Conteúdo satírico gerado com IA.", "Fontes"),
+                  "es": ("Contenido satírico generado con IA.", "Fuentes")}
 
 
 def _hook(script: str) -> str:
@@ -28,9 +31,17 @@ def _hook(script: str) -> str:
     return re.split(r"(?<=[.!?…])\s+", text, maxsplit=1)[0]
 
 
-def caption_for(p: Proposal, topic: Topic) -> str:
+def caption_for(p: Proposal, topic: Topic, lang: str = PT, text: str | None = None) -> str:
+    """Legenda em `lang`: gancho do texto dessa língua (por omissão o guião PT), aviso de IA e fontes."""
+    notice, sources = _CAPTION_TEXTS[lang]
     domains = ", ".join(sorted({s.domain for s in topic.sources if s.tier <= 2}))
-    return f"{_hook(p.script_pt)}\n\nConteúdo satírico gerado com IA. Fontes: {domains}"
+    return f"{_hook(p.script_pt if text is None else text)}\n\n{notice} {sources}: {domains}"
+
+
+def _split_key(key: str) -> tuple[str, str]:
+    """Chave de publicador: «plataforma» (pt-PT) ou «plataforma:língua»."""
+    platform, _, lang = key.partition(":")
+    return platform, lang or PT
 
 
 class Pipeline:
@@ -119,15 +130,38 @@ class Pipeline:
         for p in pair:
             self._produce(p, topic, now)
 
+    def _languages(self, topic: Topic) -> list[str]:
+        """Línguas em que a proposta deste tema se produz e publica."""
+        return [lang for lang in languages_for(topic) if lang in self.settings.publish_languages
+                and lang in _CAPTION_TEXTS]
+
     def _produce(self, p: Proposal, topic: Topic, now: datetime) -> bool:
-        # texto primeiro (guião, prompts, legenda final, tema): não se gasta voz em propostas vetadas
+        # texto primeiro (guião e traduções, prompts, legendas finais, tema): não se gasta voz em propostas vetadas
+        langs = self._languages(topic)
+        texts: dict[str, str] = {}
+        for lang in langs:
+            try:
+                texts[lang] = (p.script_pt if lang == PT
+                               else localize(p.script_pt, lang, self.llm))  # type: ignore[arg-type]
+            except Exception as e:
+                return self._reject(p, topic, [f"falha na tradução para {lang}: {e}"], now)
         text = run_gates(p, topic, [], True, self.blocklist, caption=caption_for(p, topic))
-        if not text.passed:
-            return self._reject(p, topic, text.reasons, now)
+        reasons = list(text.reasons)
+        for lang in langs:
+            if lang != PT:  # a barreira de sensibilidade corre também sobre o texto e a legenda de cada língua
+                found = sensitivity_gate(replace(p, script_pt=texts[lang]), self.blocklist,
+                                         (caption_for(p, topic, lang, texts[lang]),))
+                reasons += [f"{r} ({lang})" for r in found.reasons if r not in reasons]
+        if reasons:
+            return self._reject(p, topic, reasons, now)
+        for lang, translated in texts.items():
+            if lang != PT:
+                self.store.save_translation(p.id, lang, translated)
         assets = []
         try:
-            for lang in PUBLISH_LANGUAGES:
-                assets += self.builder(p, lang, self.voice, self.visuals, self.llm, self.workdir)[1]
+            for lang in langs:
+                assets += self.builder(p, lang, self.voice, self.visuals, self.llm, self.workdir,
+                                       script=texts[lang])[1]
         except Exception as e:
             return self._reject(p, topic, [f"falha na produção do vídeo: {e}"], now)
         legal = copyright_gate(assets)
@@ -221,31 +255,44 @@ class Pipeline:
         published: dict[str, str] = {}
         for p in eligible:
             topic = self.store.topic(p.topic_id)
-            video = self.workdir / f"{p.id}-{PUBLISH_LANGUAGES[0]}.mp4"
-            for platform, publisher in self.publishers.items():
-                if self.store.publication(p.id, platform):
+            langs = {key: _split_key(key)[1] for key in self.publishers}
+            applicable = {key: lang for key, lang in langs.items() if self._applies(p, topic, lang)}
+            for key, lang in applicable.items():
+                publisher = self.publishers[key]
+                if self.store.publication(p.id, key):
                     continue
-                if not self.store.claim_publication(p.id, platform, now):
+                if not self.store.claim_publication(p.id, key, now):
                     continue  # outra execução está a publicá-la agora
                 if not self._eligible_now(p.id, now, today, needs_accept):
-                    self.store.release_claim(p.id, platform)
+                    self.store.release_claim(p.id, key)
                     break  # recusada, em revisão ou mudou entretanto: relê-se o estado antes de cada upload
                 p = self.store.proposal(p.id)  # texto atual (pode ter sido revisto)
-                caption = caption_for(p, topic)
+                text = p.script_pt if lang == PT else self.store.translation(p.id, lang)
+                if text is None:
+                    self.store.release_claim(p.id, key)
+                    continue
+                caption = caption_for(p, topic, lang, text)
+                video = self.workdir / f"{p.id}-{lang}.mp4"
                 try:
                     external_id = publisher.publish(video, caption, True, p.id)
                 except Exception as e:
-                    self.store.release_claim(p.id, platform)
-                    self._notify_once(f"publish:{p.id}:{platform}:{type(e).__name__}", now,
+                    self.store.release_claim(p.id, key)
+                    self._notify_once(f"publish:{p.id}:{key}:{type(e).__name__}", now,
                                       f"Falhou a publicação da proposta {p.variant} de «{topic.title}» "
-                                      f"em {platform}: {e}")
+                                      f"em {key}: {e}")
                     continue
-                self.store.record_publication(p.id, platform, external_id, today_lisbon(now))
-                published[f"{p.id}:{platform}"] = external_id
-                self.channel.notify(self._published_note(platform, p, topic, external_id, caption))
-            if self.publishers and all(self.store.publication(p.id, pl) for pl in self.publishers):
+                self.store.record_publication(p.id, key, external_id, today_lisbon(now))
+                published[f"{p.id}:{key}"] = external_id
+                self.channel.notify(self._published_note(_split_key(key)[0], p, topic, external_id, caption, lang))
+            if applicable and all(self.store.publication(p.id, key) for key in applicable):
                 self.store.set_status_if(p.id, ("approved", "gated"), "published", at=now)
         return published
+
+    def _applies(self, p: Proposal, topic: Topic, lang: str) -> bool:
+        """Um publicador só se aplica a propostas que têm essa língua (tema que viaja, com tradução guardada)."""
+        if lang not in self._languages(topic):
+            return False
+        return lang == PT or self.store.translation(p.id, lang) is not None
 
     def _auto_publishable(self, now: datetime, today: date) -> list[Proposal]:
         out = []
@@ -269,7 +316,11 @@ class Pipeline:
         return self.store.topic_day(topic_id) == today and since is not None and now - since >= hold
 
     @staticmethod
-    def _published_note(platform: str, p: Proposal, topic: Topic, external_id: str, caption: str) -> str:
+    def _published_note(platform: str, p: Proposal, topic: Topic, external_id: str, caption: str,
+                        lang: str = PT) -> str:
         if platform == "tiktok":
-            return (f"Rascunho no TikTok ({external_id}): abre a app, cola a legenda e liga o rótulo de IA.\n{caption}")
-        return f"Publicado em {platform}: proposta {p.variant} de «{topic.title}» ({external_id})."
+            tag = "" if lang == PT else f" [{lang}]"
+            return (f"Rascunho no TikTok{tag} ({external_id}): abre a app, cola a legenda e liga o rótulo de IA."
+                    f"\n{caption}")
+        where = platform if lang == PT else f"{platform} ({lang})"
+        return f"Publicado em {where}: proposta {p.variant} de «{topic.title}» ({external_id})."

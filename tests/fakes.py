@@ -17,6 +17,24 @@ class FakeLLM:
         return r
 
 
+class FakeLLMWithEs(FakeLLM):
+    """FakeLLM que atende as adaptações de língua (`localize`) à parte: não gastam respostas nem entram em `calls`.
+
+    `es` é o texto devolvido, ou uma função (guião PT) -> texto."""
+
+    def __init__(self, responses, es=lambda script: f"Versión ES: {script}"):
+        super().__init__(responses)
+        self.es = es if callable(es) else (lambda script, text=es: text)
+        self.localized: list[tuple[str, str]] = []
+
+    def complete(self, system: str, user: str) -> str:
+        if system.startswith("Adapta"):
+            lang, _, script = user.removeprefix("Língua de destino: ").partition("\n\n")
+            self.localized.append((lang, script))
+            return self.es(script)
+        return super().complete(system, user)
+
+
 class FakeSearch:
     def __init__(self, results=(), error: Exception | None = None):
         self.results = list(results)
@@ -119,7 +137,7 @@ class FakePublisher:
         return f"ext-{len(self.calls)}"
 
 
-def fake_builder(p, lang, voice, visuals, llm, workdir):
+def fake_builder(p, lang, voice, visuals, llm, workdir, script=None):
     from onlinebusinesses.models import Asset
 
     workdir.mkdir(parents=True, exist_ok=True)
