@@ -19,9 +19,9 @@ class NullSearch:
 
 class UnconfiguredVoice:
     def synthesize(self, text: str, lang: str, out: Path) -> Path:
-        raise RuntimeError(f"fornecedor de voz por configurar ({_HINT}, secção 4)")
+        raise RuntimeError(f"fornecedor de voz por configurar ({_HINT})")
 
 
 class UnconfiguredVisuals:
     def render(self, prompts: Sequence[str], style: str, out_dir: Path) -> list[Path]:
-        raise RuntimeError(f"fornecedor de visuais por configurar ({_HINT}, secção 4)")
+        raise RuntimeError(f"fornecedor de visuais por configurar ({_HINT})")

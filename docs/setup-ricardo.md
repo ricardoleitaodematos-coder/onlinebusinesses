@@ -1,33 +1,38 @@
-# O que só o Ricardo faz (set-up inicial)
+# O que só o Ricardo faz
 
-Nada disto se faz por ti, e nenhum segredo entra no repositório: tokens vão para variáveis de ambiente ou para o cofre de segredos do sítio onde isto corre.
+Tudo o resto está pronto no código e é instalado pelo Claude na Google Cloud (`bash deploy/instalar-na-google-cloud.sh`).
+Nenhum segredo entra no repositório: as chaves vão para as **variáveis de ambiente do ambiente cloud** (menu do
+ambiente → Editar). **Depois de mudares variáveis do ambiente, abre uma sessão nova** para o Claude as ver.
 
-## 1. Contas
-- [ ] Instagram em modo **profissional** (criador ou empresa); para o Facebook Login, uma **Página** associada.
-- [ ] Conta TikTok para a marca de teste.
-- [ ] **Contas em espanhol** (o ES é garantido na fase 0, em espanhol neutro, nos temas que viajam — IA e geopolítica): um **Instagram profissional** e uma **conta TikTok** próprios para a versão ES, com nome e biografia em espanhol. Cada língua tem a sua conta; a versão ES nunca vai para as contas PT-PT.
+## 1. Google Cloud (identidade e pagamento)
+- [ ] Criar a conta e um projeto, com faturação ativa: <https://console.cloud.google.com/billing> (o nível gratuito exige faturação).
+- [ ] Criar uma conta de serviço com papel **Owner** no projeto e descarregar a chave:
+  <https://console.cloud.google.com/iam-admin/serviceaccounts> → *Criar conta de serviço* → papel *Owner* →
+  abrir a conta → separador **Chaves** → *Adicionar chave* → *Criar nova chave* → **JSON**.
+- [ ] Colar o JSON **inteiro** (começa por `{"type": "service_account"`) na variável `GCP_SA_KEY` do ambiente cloud.
 
-## 2. Apps de programador e revisão
-- [ ] App na **Meta for Developers** com `instagram_business_content_publish` (ou `instagram_content_publish`); pedir **Advanced/Standard Access** (revisão da Meta).
-- [ ] App na **TikTok for Developers** com `video.upload` (rascunhos) e `video.publish`; pedir a **auditoria** para sair do modo privado (demora semanas). Até lá: só rascunhos.
-- [ ] Para o **Instagram em espanhol**: autorizar a conta ES na app da Meta (a mesma app serve; é um token e um utilizador diferentes). O publicador regista-se como `instagram:es`, com o respetivo token, quando houver alojamento de vídeo.
-- [ ] Para o **TikTok em espanhol**: autorizar a conta ES na app da TikTok (utilizador de teste/alvo da conta ES) e guardar o token em `TIKTOK_ACCESS_TOKEN_ES` (o da conta PT-PT fica em `TIKTOK_ACCESS_TOKEN`). Os rascunhos ES chegam como aviso no Telegram, com a legenda em espanhol e o lembrete do rótulo de IA.
+## 2. Telegram (aprovações e escolha de temas)
+- [ ] No Telegram, falar com o **@BotFather** (<https://t.me/BotFather>): `/newbot`. Colar o token em `TELEGRAM_BOT_TOKEN`.
+- [ ] Enviar uma mensagem ao bot e abrir `https://api.telegram.org/bot<TOKEN>/getUpdates` no browser: o número em
+  `"chat":{"id":...}` vai para `TELEGRAM_CHAT_ID`. Só esse chat é aceite.
 
-## 3. Telegram (aprovações e escolha de temas)
-- [ ] Criar o bot com o **@BotFather** e guardar o token em `TELEGRAM_BOT_TOKEN`.
-- [ ] Enviar uma mensagem ao bot e dar-me o teu `chat_id` (`TELEGRAM_CHAT_ID`). Só esse chat é aceite.
+## 3. Anthropic
+- [ ] Chave em <https://console.anthropic.com/settings/keys> → `ANTHROPIC_API_KEY`; o identificador do modelo (consola) → `LLM_MODEL`.
 
-## 4. Serviços
-- [ ] Chave do LLM em `ANTHROPIC_API_KEY` e o modelo em `LLM_MODEL`.
-- [ ] Uma **API de pesquisa web** (para a pesquisa com fontes fiáveis); termos de uso que permitam usar os resultados.
-- [ ] Um fornecedor de **voz** (consentimento para usar a tua voz como referência) e outro de **visuais** (estilos cartoon, ilustração, abstrato).
-- [ ] **Armazenamento de vídeo com URL público** (o Instagram exige `video_url` público).
+## 4. Brave Search (pesquisa web)
+- [ ] Criar conta e chave em <https://api-dashboard.search.brave.com/> (plano Search; 5 USD de créditos mensais) → `BRAVE_API_KEY`.
 
-## 5. Onde corre
-- [ ] Um sítio onde o agendador corra sozinho (servidor pequeno ou serverless), com `crontab`: pesquisa às 07:00 (Lisboa); `poll` e `publish` a cada minuto.
+## 5. Contas de teste e apps (as revisões demoram dias ou semanas)
+Nomes: **«Ironia Diária»** (PT) e **«Ironía Diaria»** (ES). Cada língua tem a sua conta; o ES nunca vai para as contas PT.
+- [ ] Instagram profissional (criador ou empresa) + Página do Facebook associada, uma por língua: <https://www.instagram.com/accounts/emailsignup/>.
+- [ ] TikTok, uma conta por língua: <https://www.tiktok.com/signup>.
+- [ ] App na Meta for Developers (<https://developers.facebook.com/apps/>) com `instagram_business_content_publish`; pedir **Advanced Access**
+  (revisão da Meta). Variáveis: `INSTAGRAM_USER_ID` + `INSTAGRAM_ACCESS_TOKEN` (PT) e `INSTAGRAM_USER_ID_ES` + `INSTAGRAM_ACCESS_TOKEN_ES` (ES).
+- [ ] App na TikTok for Developers (<https://developers.tiktok.com/>) com `video.upload`; pedir a **auditoria** para sair do modo privado.
+  Variáveis: `TIKTOK_ACCESS_TOKEN` (PT) e `TIKTOK_ACCESS_TOKEN_ES` (ES). Até haver auditoria só há rascunhos.
+
+Os tokens do Instagram e do TikTok podem vir depois: o Claude volta a correr o script para os instalar.
 
 ## 6. Decisões tuas, quando quiseres
-- Línguas a publicar: por defeito `PUBLISH_LANGUAGES=pt-PT,es`. Para publicar só em PT-PT (por exemplo enquanto as contas ES não estão prontas), define `PUBLISH_LANGUAGES=pt-PT`. PT-BR está adiado.
-- Nome da marca e dos canais.
-- Se publicamos as duas propostas de cada tema (por defeito: sim).
-- WhatsApp em vez de Telegram (mais trabalho: janela de 24 h e botões até 3).
+- `PUBLISH_LANGUAGES` (por omissão `pt-PT,es`; só PT-PT enquanto as contas ES não estão prontas). PT-BR está adiado.
+- Nome da marca e dos canais; WhatsApp em vez de Telegram (mais trabalho: janela de 24 h e botões até 3).

@@ -32,6 +32,15 @@ CRON_TZ=Europe/Lisbon
 * * * * *   cd /caminho/onlinebusinesses && .venv/bin/python -m onlinebusinesses publish
 ```
 
-## Por configurar
-Voz, visuais, API de pesquisa web e alojamento de vídeo (Instagram) estão atrás de `Protocol`s; enquanto não existirem,
-`unconfigured.py` falha com uma mensagem clara e a pesquisa corre só com RSS.
+## Instalar na Google Cloud
+O Claude corre, na sessão cloud: `bash deploy/instalar-na-google-cloud.sh`. Usa a chave `GCP_SA_KEY` (conta de serviço
+com papel Owner) e as variáveis de ambiente da sessão (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ANTHROPIC_API_KEY`,
+`LLM_MODEL`, `BRAVE_API_KEY`, `INSTAGRAM_*`, `TIKTOK_*`). Empacota o código (`git archive HEAD`) para um bucket privado,
+guarda os segredos no Secret Manager (`onlinebusinesses-env`), cria o bucket público dos vídeos, a conta de serviço e uma
+VM e2-micro do nível gratuito cujo `startup-script` instala tudo e o `cron`. Atualizar = voltar a correr o script.
+O que o Ricardo tem de fazer: `docs/setup-ricardo.md`.
+
+Variáveis adicionais lidas pela CLI: `GOOGLE_CLOUD_PROJECT` (liga TTS e Imagen), `GCS_BUCKET` (alojamento; com
+`INSTAGRAM_USER_ID`/`INSTAGRAM_ACCESS_TOKEN` e os `_ES` regista `instagram` e `instagram:es`), `VERTEX_LOCATION`,
+`IMAGEN_MODEL`, `TTS_VOICE_PT`, `TTS_VOICE_ES`, `BRAVE_API_KEY`, `ENV_FILE` (por omissão `/etc/onlinebusinesses.env`).
+Sem estas variáveis mantêm-se os `Unconfigured*`/`NullSearch` de `unconfigured.py`.
